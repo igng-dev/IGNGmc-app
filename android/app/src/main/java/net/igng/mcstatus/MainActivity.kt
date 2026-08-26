@@ -7,9 +7,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.igng.mcstatus.data.AuthRepository
+import net.igng.mcstatus.data.CustomerTicketRepository
+import net.igng.mcstatus.data.InfoHallRepository
+import net.igng.mcstatus.data.McManagementRepository
 import net.igng.mcstatus.data.StatusRepository
 import net.igng.mcstatus.data.SettingsRepository
-import net.igng.mcstatus.data.TicketRepository
 import net.igng.mcstatus.data.ChatRepository
 import net.igng.mcstatus.ui.StatusApp
 import net.igng.mcstatus.ui.SettingsViewModel
@@ -23,12 +26,15 @@ class MainActivity : ComponentActivity() {
 
         val repository = StatusRepository(baseUrl = BuildConfig.MC_STATUS_BASE_URL)
         val settingsRepository = SettingsRepository(this)
-        val ticketRepository = TicketRepository(BuildConfig.MC_STATUS_BASE_URL, BuildConfig.IGNG_SSO_BASE_URL)
+        val authRepository = AuthRepository(BuildConfig.IGNG_SSO_BASE_URL)
+        val ticketRepository = CustomerTicketRepository(BuildConfig.MC_STATUS_BASE_URL)
         val chatRepository = ChatRepository(BuildConfig.MC_STATUS_BASE_URL)
+        val infoHallRepository = InfoHallRepository(BuildConfig.MC_STATUS_BASE_URL)
+        val mcManagementRepository = McManagementRepository(BuildConfig.MC_STATUS_BASE_URL)
 
         setContent {
             val settingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel<SettingsViewModel>(
-                factory = SettingsViewModelFactory(settingsRepository, ticketRepository)
+                factory = SettingsViewModelFactory(settingsRepository, authRepository)
             )
             val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
             val loginState by settingsViewModel.loginState.collectAsStateWithLifecycle()
@@ -40,8 +46,10 @@ class MainActivity : ComponentActivity() {
             IGNGMcStatusTheme(settings = settings) {
                 StatusApp(
                     repository = repository,
+                    infoHallRepository = infoHallRepository,
                     ticketRepository = ticketRepository,
                     chatRepository = chatRepository,
+                    mcManagementRepository = mcManagementRepository,
                     settings = settings,
                     onSetVibrationEnabled = settingsViewModel::setVibrationEnabled,
                     onSetUseSystemAccent = settingsViewModel::setUseSystemAccent,

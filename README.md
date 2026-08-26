@@ -7,19 +7,20 @@ IGNGmc 是一款面向 IGNG 用户的 Android 应用。
 ## 你可以用它做什么
 
 - 一眼查看 IGNG Minecraft 服务器是否在线
-- 查看服务器和 QQ 群聊天记录，支持筛选、定位与举报
+- 查看服务器和 QQ 群聊天记录，支持筛选与定位
 - 查看 TPS、延迟、在线人数、CPU 和内存等实时信息
 - 回顾服务器最近一段时间的运行状态
 - 登录自己的 IGNG 账号
-- 查看自己发起或收到的工单
-- 创建工单、查看回复，并在有权限时继续处理
+- 查看自己发起或参与的工单
+- 创建工单、编辑未结单工单、查看回复并继续参与交流
+- 管理自己绑定的 Minecraft 账号、领地和游戏数据
 - 在多个账号之间切换，并按自己的习惯调整主题和触感反馈
 
 ## 下载
 
 前往 [Releases](https://github.com/IGNGserver/igng-mc-companion/releases) 下载最新版本。
 
-当前版本：[v1.0.7](https://github.com/IGNGserver/igng-mc-companion/releases/tag/v1.0.7)
+当前版本：[v1.0.8](https://github.com/IGNGserver/igng-mc-companion/releases/tag/v1.0.8)
 
 应用支持 Android 8.0 及以上版本。
 
@@ -29,7 +30,7 @@ IGNGmc 是一款面向 IGNG 用户的 Android 应用。
 2. 在“设置”中登录你的 IGNG 账号。
 3. 在“状态”页面查看服务器运行情况。
 4. 在“聊天”页面查看服务器与 QQ 群消息记录。
-5. 登录后打开“工单”，查看或提交工单。
+5. 登录后打开“工单”，查看、提交或跟进用户侧工单。
 
 应用只会连接 IGNG 服务来获取服务器状态、聊天记录和处理工单，不会要求你提供 Minecraft 服务器密码。
 

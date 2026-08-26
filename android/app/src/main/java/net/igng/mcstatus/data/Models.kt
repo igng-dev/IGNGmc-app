@@ -16,6 +16,12 @@ data class ServerSummary(
 data class NodeSummary(
     val node_id: Int,
     val node_name: String,
+    val node_ip: String? = null,
+    val enabled: Boolean? = null,
+    val last_seen_at: String? = null,
+    val collector_version: String? = null,
+    val age_seconds: Double? = null,
+    val freshness: String? = null,
 )
 
 @Serializable
@@ -28,6 +34,22 @@ data class LatencyRecord(
     val min_latency_ms: Double? = null,
     val packet_loss_pct: Double? = null,
     val timestamp_utc: String,
+    val attempt_count: Int? = null,
+    val success_count: Int? = null,
+    val timeout_count: Int? = null,
+    val error_count: Int? = null,
+    val probe_status: String? = null,
+    val probe_protocol: String? = null,
+    val p50_latency_ms: Double? = null,
+    val p95_latency_ms: Double? = null,
+    val jitter_ms: Double? = null,
+    val probe_started_at_utc: String? = null,
+    val probe_finished_at_utc: String? = null,
+    val collector_id: String? = null,
+    val collector_version: String? = null,
+    val age_seconds: Double? = null,
+    val freshness: String? = null,
+    val status: String? = null,
 )
 
 @Serializable
@@ -39,30 +61,120 @@ data class PerformanceSample(
     val memory_usage_mb: Double? = null,
     val online_players: Int? = null,
     val recorded_at: String,
+    val sample_count: Int? = null,
+    val expected_sample_count: Int? = null,
+    val metrics_status: String? = null,
+    val window_start_epoch: Long? = null,
+    val window_end_epoch: Long? = null,
+    val window_start: String? = null,
+    val window_end: String? = null,
+    val container_cpu_usage_percent: Double? = null,
+    val cpu_capacity_percent: Double? = null,
+    val container_memory_usage_mb: Double? = null,
+    val container_memory_limit_mb: Double? = null,
+    val resource_status: String? = null,
+    val resource_source: String? = null,
+)
+
+@Serializable
+data class StatusGridReference(
+    val nodeId: Int,
+    val avg: Double,
+    val loss: Double,
+)
+
+@Serializable
+data class StatusGridNodeStat(
+    val nodeId: Int,
+    val avg: Double,
+    val loss: Double,
+    val maxLatency: Double = 0.0,
+    val count: Int = 0,
+)
+
+@Serializable
+data class StatusGridBucket(
+    val start: String,
+    val end: String? = null,
+    val status: String,
+    val nodeStats: List<StatusGridNodeStat> = emptyList(),
+    val coverageLabel: String = "0/0",
+    val referenceNode: StatusGridReference? = null,
+)
+
+@Serializable
+data class StatusGridPayload(
+    val segments: Int = 0,
+    val buckets: List<StatusGridBucket> = emptyList(),
 )
 
 @Serializable
 data class TimelineServerPayload(
     val latencies: List<LatencyRecord> = emptyList(),
     val perf: List<PerformanceSample> = emptyList(),
+    val statusGrid: StatusGridPayload? = null,
 )
 
 @Serializable
 data class TimelineResponse(
     val data: Map<String, TimelineServerPayload> = emptyMap(),
     val nodeNames: Map<String, String> = emptyMap(),
+    val generatedAt: String? = null,
+    val range: TimeRange? = null,
+    val bucketMinutes: Int? = null,
+    val nodes: List<NodeSummary> = emptyList(),
 )
 
 @Serializable
-data class OverviewServerPayload(
-    val server: ServerSummary,
-    val latestPerf: PerformanceSample? = null,
-    val bestLatency: LatencyRecord? = null,
+data class TimeRange(
+    val start: String? = null,
+    val end: String? = null,
 )
 
 @Serializable
-data class OverviewResponse(
-    val data: List<OverviewServerPayload> = emptyList(),
+data class StatusPolicy(
+    val expectedPerformanceSeconds: Int = 60,
+    val expectedLatencySeconds: Int = 60,
+    val lookbackSeconds: Int = 900,
+)
+
+@Serializable
+data class CurrentStatusSummary(
+    val overall: String = "unknown",
+    val liveness: String = "unknown",
+    val performance: String = "no_data",
+    val network: String = "no_data",
+)
+
+@Serializable
+data class CurrentNetworkSummary(
+    val status: String = "no_data",
+    val healthy_nodes: Int = 0,
+    val total_nodes: Int = 0,
+    val reference_node_id: Int? = null,
+    val reference_node_name: String? = null,
+    val reference_latency_ms: Double? = null,
+    val reference_packet_loss_pct: Double? = null,
+    val reference_status: String? = null,
+    val rows: List<LatencyRecord> = emptyList(),
+)
+
+@Serializable
+data class CurrentServerData(
+    val server: ServerSummary? = null,
+    val performance: PerformanceSample? = null,
+    val perf: List<PerformanceSample> = emptyList(),
+    val latencies: List<LatencyRecord> = emptyList(),
+    val network: CurrentNetworkSummary = CurrentNetworkSummary(),
+    val status: CurrentStatusSummary = CurrentStatusSummary(),
+)
+
+@Serializable
+data class CurrentStatusResponse(
+    val generatedAt: String? = null,
+    val policy: StatusPolicy = StatusPolicy(),
+    val nodes: List<NodeSummary> = emptyList(),
+    val data: Map<String, CurrentServerData> = emptyMap(),
 )
 
 @Serializable
@@ -70,6 +182,12 @@ data class ServerDetailResponse(
     val server: ServerSummary,
     val latencies: List<LatencyRecord> = emptyList(),
     val perfLogs: List<PerformanceSample> = emptyList(),
+    val generatedAt: String? = null,
+    val range: TimeRange? = null,
+    val bucketMinutes: Int? = null,
+    val current: CurrentServerData? = null,
+    val policy: StatusPolicy? = null,
+    val statusGrid: StatusGridPayload? = null,
 )
 
 enum class RangePreset(val id: String, val label: String, val hours: Long) {
@@ -91,6 +209,10 @@ data class ServerCardState(
     val server: ServerSummary,
     val latestPerf: PerformanceSample?,
     val bestLatency: LatencyRecord?,
+    val latencies: List<LatencyRecord> = emptyList(),
+    val perf: List<PerformanceSample> = emptyList(),
+    val statusGrid: StatusGridPayload? = null,
+    val current: CurrentServerData? = null,
     val isOnline: Boolean,
 )
 
@@ -98,6 +220,86 @@ data class OverviewServerSnapshot(
     val server: ServerSummary,
     val latestPerf: PerformanceSample?,
     val bestLatency: LatencyRecord?,
+    val latencies: List<LatencyRecord> = emptyList(),
+    val perf: List<PerformanceSample> = emptyList(),
+    val statusGrid: StatusGridPayload? = null,
+)
+
+@Serializable
+data class TrafficPoint(
+    val bucketEpoch: Long = 0,
+    val timestamp: String? = null,
+    val tx: Long = 0,
+    val rx: Long = 0,
+    val total: Long = 0,
+)
+
+@Serializable
+data class TrafficTotals(
+    val tx: Long = 0,
+    val rx: Long = 0,
+    val total: Long = 0,
+)
+
+@Serializable
+data class TrafficResponse(
+    val bucketSeconds: Long = 1800,
+    val start: String? = null,
+    val end: String? = null,
+    val data: Map<String, List<TrafficPoint>> = emptyMap(),
+    val totals: Map<String, TrafficTotals> = emptyMap(),
+)
+
+@Serializable
+data class FakePlayer(
+    val fake_name: String,
+    val server_name: String,
+    val world: String? = null,
+)
+
+@Serializable
+data class IpTrafficTotal(
+    val ip: String,
+    val tx: Long = 0,
+    val rx: Long = 0,
+    val total: Long = 0,
+)
+
+@Serializable
+data class SearchedIpTraffic(
+    val ip: String,
+    val tx: Long = 0,
+    val rx: Long = 0,
+    val total: Long = 0,
+    val points: List<TrafficPoint> = emptyList(),
+)
+
+@Serializable
+data class TrafficAdminInfo(
+    val userId: Int? = null,
+    val username: String? = null,
+    val role: String? = null,
+)
+
+@Serializable
+data class TrafficAdminResponse(
+    val bucketSeconds: Long = 1800,
+    val start: String? = null,
+    val end: String? = null,
+    val source: String? = null,
+    val sourceLabel: String? = null,
+    val serverIds: List<Int>? = null,
+    val totals: TrafficTotals = TrafficTotals(),
+    val topIps: List<IpTrafficTotal> = emptyList(),
+    val series: Map<String, List<TrafficPoint>> = emptyMap(),
+    val searched: SearchedIpTraffic? = null,
+    val admin: TrafficAdminInfo? = null,
+)
+
+@Serializable
+data class McAuthMeResponse(
+    val user: LoginUser? = null,
+    val adminRole: String? = null,
 )
 
 enum class DetailSection(val id: String) {
@@ -147,20 +349,6 @@ data class SavedAccount(
 @Serializable data class MathCaptcha(val a: Int, val b: Int, val token: String)
 @Serializable data class LoginUser(val id: Int, val username: String, val nickname: String? = null)
 @Serializable data class LoginResponse(val success: Boolean, val sessionToken: String, val expiresAt: String? = null, val user: LoginUser)
-@Serializable data class ReportServer(val id: Int, val name: String, val address: String? = null)
-@Serializable data class ReportTarget(val mc_username: String)
-@Serializable data class ReportReply(val id: Int = 0, val author_name: String, val content: String, val created_at: String, val deleted_at: String? = null, val authorRoleLabel: String? = null)
-@Serializable data class ReportPermissions(val canReply: Boolean = false, val canManage: Boolean = false)
-@Serializable data class TicketReport(
-    val id: Int, val title: String, val content: String, val status: String,
-    val reporter_user_id: Int, val reporter_name: String, val source_server_id: Int? = null, val source_server_name: String? = null,
-    val visibility: String, val target_visibility: String, val created_at: String,
-    val targets: List<ReportTarget> = emptyList(), val replies: List<ReportReply> = emptyList(),
-    val permissions: ReportPermissions = ReportPermissions(),
-)
-@Serializable data class TicketQuota(val limit: Int, val remaining: Int)
-@Serializable data class TicketsResponse(val ok: Boolean, val adminRole: String? = null, val reports: List<TicketReport> = emptyList(), val servers: List<ReportServer> = emptyList(), val quota: TicketQuota)
-@Serializable data class TicketDetailResponse(val ok: Boolean, val report: TicketReport, val adminRole: String? = null, val servers: List<ReportServer> = emptyList())
 
 private val displayFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
     .withZone(ZoneId.systemDefault())
