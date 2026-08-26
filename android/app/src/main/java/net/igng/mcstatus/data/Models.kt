@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class ServerSummary(
@@ -17,7 +18,9 @@ data class NodeSummary(
     val node_id: Int,
     val node_name: String,
     val node_ip: String? = null,
-    val enabled: Boolean? = null,
+    // MySQL tinyint is emitted as 0/1 by the site; keep this tolerant of
+    // either that representation or a future JSON boolean.
+    val enabled: JsonElement? = null,
     val last_seen_at: String? = null,
     val collector_version: String? = null,
     val age_seconds: Double? = null,
