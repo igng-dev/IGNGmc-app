@@ -18,8 +18,8 @@ android {
         applicationId = "net.igng.mcstatus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.0.9"
+        versionCode = 11
+        versionName = "1.0.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -33,6 +33,11 @@ android {
             .get()
             .trimEnd('/')
         buildConfigField("String", "IGNG_SSO_BASE_URL", "\"$ssoBaseUrl\"")
+        val wikiBaseUrl = providers.gradleProperty("WIKI_BASE_URL")
+            .orElse("https://docs.igng.net")
+            .get()
+            .trimEnd('/')
+        buildConfigField("String", "WIKI_BASE_URL", "\"$wikiBaseUrl\"")
     }
 
     buildTypes {

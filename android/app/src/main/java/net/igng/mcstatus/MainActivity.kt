@@ -14,6 +14,8 @@ import net.igng.mcstatus.data.McManagementRepository
 import net.igng.mcstatus.data.StatusRepository
 import net.igng.mcstatus.data.SettingsRepository
 import net.igng.mcstatus.data.ChatRepository
+import net.igng.mcstatus.data.WikiCacheStore
+import net.igng.mcstatus.data.WikiRepository
 import net.igng.mcstatus.ui.StatusApp
 import net.igng.mcstatus.ui.SettingsViewModel
 import net.igng.mcstatus.ui.SettingsViewModelFactory
@@ -31,6 +33,10 @@ class MainActivity : ComponentActivity() {
         val chatRepository = ChatRepository(BuildConfig.MC_STATUS_BASE_URL)
         val infoHallRepository = InfoHallRepository(BuildConfig.MC_STATUS_BASE_URL)
         val mcManagementRepository = McManagementRepository(BuildConfig.MC_STATUS_BASE_URL)
+        val wikiRepository = WikiRepository(
+            baseUrl = BuildConfig.WIKI_BASE_URL,
+            cache = WikiCacheStore(this),
+        )
 
         setContent {
             val settingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel<SettingsViewModel>(
@@ -50,6 +56,7 @@ class MainActivity : ComponentActivity() {
                     ticketRepository = ticketRepository,
                     chatRepository = chatRepository,
                     mcManagementRepository = mcManagementRepository,
+                    wikiRepository = wikiRepository,
                     settings = settings,
                     onSetVibrationEnabled = settingsViewModel::setVibrationEnabled,
                     onSetUseSystemAccent = settingsViewModel::setUseSystemAccent,

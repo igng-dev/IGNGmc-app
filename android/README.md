@@ -38,6 +38,10 @@ Jetpack Compose + Kotlin + Material 3 实现的 IGNG MC 服务器状态客户端
 - `/api/mc/lands`、`/api/mc/teleports`、`/api/mc/logins`、`/api/mc/fake-players`
 - `/api/mc/permissions`、`/api/mc/details`
 - `/api/mc/manage`、`/api/mc/lands/manage`
+- `https://docs.igng.net/api/wiki/catalog?kb=IGNGmc`
+- `https://docs.igng.net/api/wiki/page?kb=IGNGmc&pageId=<id>`
+
+教程页使用 `WIKI_BASE_URL` 对接 `docs.igng.net` 的公开 Wiki API。目录和文章会在打开或手动刷新时同步，网络不可用时显示最近一次缓存内容；文章正文不打包进 APK。
 
 状态首页使用 `list` 获取服务器、`nodes` 获取节点信息，同时读取 `current` 获取站点权威状态，再使用 `timeline` 获取所选时间范围内的性能、延迟和服务端状态格；不再依赖站点保留的旧版 `/api/status/overview` 聚合接口。
 

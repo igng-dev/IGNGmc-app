@@ -41,6 +41,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.NetworkCheck
@@ -49,7 +50,7 @@ import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Article
+import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.AssistChip
@@ -132,6 +133,7 @@ import net.igng.mcstatus.data.ThemeAccent
 import net.igng.mcstatus.data.ChatRepository
 import net.igng.mcstatus.data.SavedAccount
 import net.igng.mcstatus.data.toDisplayTime
+import net.igng.mcstatus.data.WikiRepository
 
 @Composable
 fun StatusApp(
@@ -140,6 +142,7 @@ fun StatusApp(
     ticketRepository: CustomerTicketRepository,
     chatRepository: ChatRepository,
     mcManagementRepository: McManagementRepository,
+    wikiRepository: WikiRepository,
     settings: AppSettings,
     onSetVibrationEnabled: (Boolean) -> Unit,
     onSetUseSystemAccent: (Boolean) -> Unit,
@@ -159,15 +162,21 @@ fun StatusApp(
         }
     )
     val adminAccess by adminAccessViewModel.uiState.collectAsStateWithLifecycle()
+    val tutorialViewModel: TutorialViewModel = viewModel(
+        key = "tutorial",
+        factory = remember(wikiRepository) { TutorialViewModelFactory(wikiRepository) },
+    )
+    val tutorialState by tutorialViewModel.uiState.collectAsStateWithLifecycle()
     val destination by navController.currentBackStackEntryAsState()
     val route = destination?.destination?.route
     val informationRoute = route?.startsWith("information") == true
     Scaffold(bottomBar = {
-        if (route == "overview" || route == "tickets" || route == "chatlogs" || informationRoute) NavigationBar {
+        if (route == "overview" || route == "tickets" || route == "chatlogs" || route == "tutorial" || informationRoute) NavigationBar {
             NavigationBarItem(selected = route == "chatlogs", onClick = { performAppHaptic(haptic, settings, AppHapticType.Tap); navController.navigate("chatlogs") { launchSingleTop = true } }, icon = { Icon(Icons.Rounded.Forum, null) }, label = { Text("聊天") })
             NavigationBarItem(selected = route == "overview", onClick = { performAppHaptic(haptic, settings, AppHapticType.Tap); navController.navigate("overview") { launchSingleTop = true } }, icon = { Icon(Icons.Rounded.Home, null) }, label = { Text("状态") })
-            NavigationBarItem(selected = route == "tickets", onClick = { performAppHaptic(haptic, settings, AppHapticType.Tap); navController.navigate("tickets") { launchSingleTop = true } }, icon = { Icon(Icons.Rounded.Article, null) }, label = { Text("工单") })
+            NavigationBarItem(selected = route == "tickets", onClick = { performAppHaptic(haptic, settings, AppHapticType.Tap); navController.navigate("tickets") { launchSingleTop = true } }, icon = { Icon(Icons.AutoMirrored.Rounded.Article, null) }, label = { Text("工单") })
             NavigationBarItem(selected = informationRoute, onClick = { performAppHaptic(haptic, settings, AppHapticType.Tap); navController.navigate("information?tab=${InfoHallTab.LANDS.route}") { launchSingleTop = true } }, icon = { Icon(Icons.Rounded.Public, null) }, label = { Text("信息") })
+            NavigationBarItem(selected = route == "tutorial", onClick = { performAppHaptic(haptic, settings, AppHapticType.Tap); navController.navigate("tutorial") { launchSingleTop = true } }, icon = { Icon(Icons.AutoMirrored.Rounded.MenuBook, null) }, label = { Text("教程") })
         }
     }) { outerPadding -> NavHost(
         navController = navController,
@@ -331,6 +340,52 @@ fun StatusApp(
         }
         composable("chatlogs") { ChatLogsScreen(chatRepository, settings) }
         composable("tickets") { CustomerTicketsScreen(ticketRepository, settings) }
+        composable("tutorial") {
+            LaunchedEffect(tutorialViewModel) { tutorialViewModel.loadIfNeeded() }
+            TutorialScreen(
+                uiState = tutorialState,
+                onQueryChanged = tutorialViewModel::setQuery,
+                onToggleNode = tutorialViewModel::toggleNode,
+                onRefresh = tutorialViewModel::refresh,
+                onOpenPage = { pageId -> navController.navigate("tutorial/article/$pageId") },
+            )
+        }
+        composable(
+            route = "tutorial/article/{pageId}",
+            arguments = listOf(navArgument("pageId") { type = NavType.IntType }),
+        ) { backStackEntry ->
+            val pageId = backStackEntry.arguments?.getInt("pageId") ?: return@composable
+            val articleViewModel: WikiArticleViewModel = viewModel(
+                key = "tutorial-article-$pageId",
+                factory = remember(wikiRepository, pageId) {
+                    WikiArticleViewModelFactory(wikiRepository, pageId)
+                },
+            )
+            val articleState by articleViewModel.uiState.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+            TutorialArticleScreen(
+                uiState = articleState,
+                neighbors = tutorialViewModel.neighborsFor(pageId),
+                onBack = { navController.popBackStack() },
+                onRefresh = articleViewModel::refresh,
+                onOpenPage = { targetPageId -> navController.navigate("tutorial/article/$targetPageId") },
+                onOpenLink = { url ->
+                    val internalPageId = tutorialViewModel.pageIdForUrl(url)
+                    if (internalPageId != null) {
+                        navController.navigate("tutorial/article/$internalPageId")
+                    } else {
+                        val target = if (url.startsWith("/")) {
+                            "${net.igng.mcstatus.BuildConfig.WIKI_BASE_URL}$url"
+                        } else {
+                            url
+                        }
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+                        }
+                    }
+                },
+            )
+        }
     }
     }
 }
