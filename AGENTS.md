@@ -4,6 +4,7 @@
 只写本仓库与设备级规范的差异；Git 纪律、worktree、冲突处理见 `~/.qoder/coder-rules/global-rules.md`。
 
 Collaboration: collaborative
+Default branch: main
 Integration: pull-request
 Release: tag-increment-only
 Worktree: `~/项目/.wt/IGNGmc软件/<slug>`
