@@ -6,6 +6,11 @@ git diff --cached --check
 
 if command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-privacy.ps1
-else
+elif command -v powershell.exe >/dev/null 2>&1; then
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/check-privacy.ps1
+elif [ -x scripts/check-privacy.sh ]; then
+    scripts/check-privacy.sh
+else
+    echo "pre-commit: no privacy checker available (need pwsh, powershell.exe, or executable scripts/check-privacy.sh)" >&2
+    exit 1
 fi
