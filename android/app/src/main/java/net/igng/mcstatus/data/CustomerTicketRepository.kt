@@ -10,6 +10,7 @@ class CustomerTicketRepository(
         ignoreUnknownKeys = true
         coerceInputValues = true
         encodeDefaults = true
+        explicitNulls = false
     },
 ) {
     suspend fun list(
@@ -95,8 +96,7 @@ data class CreateTicketRequest(
     val type: String,
     val serverScope: String,
     val serverId: Int? = null,
-    val adminVisibility: String,
-    val targetVisibility: String,
+    val accessPolicy: TicketAccessPolicy,
     val targetNames: List<String> = emptyList(),
     val content: String,
 )
@@ -105,8 +105,8 @@ data class CreateTicketRequest(
 data class UpdateTicketRequest(
     val title: String,
     val type: String,
-    val targetVisibility: String,
     val targetNames: List<String> = emptyList(),
+    val accessPolicy: TicketAccessPolicy? = null,
 )
 
 @kotlinx.serialization.Serializable

@@ -15,17 +15,43 @@ data class TicketTypeOption(
 )
 
 @Serializable
-data class TicketVisibilityOption(
+data class TicketAccessGroupOption(
     val value: String,
     val label: String,
     val description: String = "",
+    val level: Int = 0,
+)
+
+@Serializable
+data class TicketAccessActionOption(
+    val value: String,
+    val key: String,
+    val label: String,
+    val description: String = "",
+)
+
+@Serializable
+data class TicketAccessEntry(
+    val groupCode: String = "mc.admin",
+    val groupLabel: String = "",
+    val includeTargetGroup: Boolean = false,
+    val label: String = "",
+)
+
+@Serializable
+data class TicketAccessPolicy(
+    val view: TicketAccessEntry = TicketAccessEntry(),
+    val participate: TicketAccessEntry = TicketAccessEntry(),
+    val manage: TicketAccessEntry = TicketAccessEntry(),
 )
 
 @Serializable
 data class TicketOptions(
     val servers: List<TicketServerOption> = emptyList(),
     val types: List<TicketTypeOption> = emptyList(),
-    val adminVisibility: List<TicketVisibilityOption> = emptyList(),
+    val accessGroups: List<TicketAccessGroupOption> = emptyList(),
+    val accessActions: List<TicketAccessActionOption> = emptyList(),
+    val defaultAccessPolicy: TicketAccessPolicy = TicketAccessPolicy(),
 )
 
 @Serializable
@@ -74,12 +100,18 @@ data class CustomerTicketSummary(
     val serverScope: String = "ALL",
     val serverId: Int? = null,
     val serverName: String? = null,
-    val adminVisibility: String = "ADMIN",
-    val targetVisibility: String = "PRIVATE",
     val status: String = "OPEN",
     val statusLabel: String = "",
     val relation: String = "",
     val relationLabel: String = "",
+    val accessPolicy: TicketAccessPolicy = TicketAccessPolicy(),
+    val canView: Boolean = false,
+    val canParticipate: Boolean = false,
+    val canManage: Boolean = false,
+    val canReply: Boolean = false,
+    val canEdit: Boolean = false,
+    val canClose: Boolean = false,
+    val canManagePolicy: Boolean = false,
     val conversationState: String? = null,
     val conversationStateLabel: String? = null,
     val latestMessage: TicketMessagePreview? = null,
@@ -127,8 +159,6 @@ data class CustomerTicketDetail(
     val serverScope: String = "ALL",
     val serverId: Int? = null,
     val serverName: String? = null,
-    val adminVisibility: String = "ADMIN",
-    val targetVisibility: String = "PRIVATE",
     val status: String = "OPEN",
     val statusLabel: String = "",
     val creatorUserId: Int = 0,
@@ -136,9 +166,14 @@ data class CustomerTicketDetail(
     val isCreator: Boolean = false,
     val relation: String = "",
     val relationLabel: String = "",
+    val accessPolicy: TicketAccessPolicy = TicketAccessPolicy(),
+    val canView: Boolean = false,
+    val canParticipate: Boolean = false,
+    val canManage: Boolean = false,
     val canReply: Boolean = false,
     val canEdit: Boolean = false,
     val canClose: Boolean = false,
+    val canManagePolicy: Boolean = false,
     val conversationState: String? = null,
     val conversationStateLabel: String? = null,
     val targets: List<TicketTarget> = emptyList(),
@@ -166,8 +201,8 @@ data class TicketUpdateResult(
     val id: Int = 0,
     val title: String = "",
     val type: String = "",
-    val targetVisibility: String = "PRIVATE",
     val targetNames: List<String> = emptyList(),
+    val accessPolicy: TicketAccessPolicy = TicketAccessPolicy(),
 )
 
 @Serializable

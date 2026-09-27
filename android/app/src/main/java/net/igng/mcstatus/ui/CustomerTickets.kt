@@ -92,6 +92,10 @@ import net.igng.mcstatus.data.CustomerTicketDetail
 import net.igng.mcstatus.data.CustomerTicketRepository
 import net.igng.mcstatus.data.CustomerTicketSummary
 import net.igng.mcstatus.data.TicketAuthorLabel
+import net.igng.mcstatus.data.TicketAccessActionOption
+import net.igng.mcstatus.data.TicketAccessEntry
+import net.igng.mcstatus.data.TicketAccessGroupOption
+import net.igng.mcstatus.data.TicketAccessPolicy
 import net.igng.mcstatus.data.TicketMessage
 import net.igng.mcstatus.data.TicketOptions
 import net.igng.mcstatus.data.TicketPlayerOption
@@ -614,8 +618,8 @@ private fun TicketCreatePage(
     var type by rememberSaveable { mutableStateOf("") }
     var serverScope by rememberSaveable { mutableStateOf("ALL") }
     var serverId by rememberSaveable { mutableStateOf<Int?>(null) }
-    var adminVisibility by rememberSaveable { mutableStateOf("ADMIN") }
-    var targetVisibility by rememberSaveable { mutableStateOf(false) }
+    var accessPolicy by remember { mutableStateOf(TicketAccessPolicy()) }
+    var accessPolicyInitialized by rememberSaveable { mutableStateOf(false) }
     var content by rememberSaveable { mutableStateOf("") }
     var playerQuery by rememberSaveable { mutableStateOf("") }
     var selectedTargets by remember { mutableStateOf(emptyList<TicketPlayerOption>()) }
@@ -627,8 +631,9 @@ private fun TicketCreatePage(
     LaunchedEffect(optionsState.data) {
         val options = optionsState.data ?: return@LaunchedEffect
         if (type.isBlank()) type = options.types.firstOrNull()?.value.orEmpty()
-        if (options.adminVisibility.none { it.value == adminVisibility }) {
-            adminVisibility = options.adminVisibility.firstOrNull()?.value ?: "ADMIN"
+        if (!accessPolicyInitialized) {
+            accessPolicy = options.defaultAccessPolicy
+            accessPolicyInitialized = true
         }
     }
 
@@ -710,23 +715,15 @@ private fun TicketCreatePage(
                 }
             }
             item {
-                TicketSectionTitle("管理员可见范围", "提交后不能由用户侧修改")
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    options.adminVisibility.forEach { option ->
-                        FilterChip(
-                            selected = adminVisibility == option.value,
-                            onClick = { adminVisibility = option.value },
-                            label = { Text(option.label) },
-                            enabled = !pending,
-                        )
-                    }
-                }
-                options.adminVisibility.firstOrNull { it.value == adminVisibility }?.description?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                TicketSectionTitle("权限分配", "分别设置查看、参与和管理；权限会按层级递进校验。")
+                TicketAccessPolicyEditor(
+                    policy = accessPolicy,
+                    actions = options.accessActions,
+                    groups = options.accessGroups,
+                    targetCount = selectedTargets.size,
+                    enabled = !pending,
+                    onChange = { accessPolicy = it },
+                )
             }
             item {
                 TicketSectionTitle("涉事玩家", "可不选择；只能从 AuthMe 已有玩家中选择")
@@ -747,16 +744,9 @@ private fun TicketCreatePage(
                     },
                     onRemove = { username ->
                         selectedTargets = selectedTargets.filterNot { it.username == username }
-                        if (selectedTargets.isEmpty()) targetVisibility = false
+                        if (selectedTargets.isEmpty()) accessPolicy = accessPolicy.withoutTargetGroup()
                     },
                     enabled = !pending,
-                )
-                FilterChip(
-                    selected = targetVisibility && selectedTargets.isNotEmpty(),
-                    onClick = { targetVisibility = !targetVisibility },
-                    label = { Text(if (targetVisibility) "允许涉事玩家查看" else "不允许涉事玩家查看") },
-                    leadingIcon = { Icon(if (targetVisibility) Icons.Rounded.Person else Icons.Rounded.Lock, contentDescription = null) },
-                    enabled = selectedTargets.isNotEmpty() && !pending,
                 )
             }
             item {
@@ -790,8 +780,7 @@ private fun TicketCreatePage(
                                 type = type,
                                 serverScope = serverScope,
                                 serverId = if (serverScope == "SPECIFIC") serverId else null,
-                                adminVisibility = adminVisibility,
-                                targetVisibility = if (targetVisibility && selectedTargets.isNotEmpty()) "PUBLIC" else "PRIVATE",
+                                accessPolicy = accessPolicy,
                                 targetNames = selectedTargets.map { it.username },
                                 content = content.trim(),
                             ),
@@ -994,12 +983,11 @@ private fun TicketInfoCard(ticket: CustomerTicketDetail) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             TicketInfoRow("发起人", ticket.creatorName)
             TicketInfoRow("涉及服务器", if (ticket.serverScope == "ALL") "综合" else ticket.serverName ?: "指定服务器")
-            TicketInfoRow("管理员范围", if (ticket.adminVisibility == "SUPERADMIN") "仅全局管理员" else "全部 MC 管理员")
             TicketInfoRow(
                 "涉事玩家",
                 ticket.targets.joinToString("、") { it.mcUsername }.ifBlank { "未指定" },
             )
-            TicketInfoRow("涉事玩家可见", if (ticket.targetVisibility == "PUBLIC") "允许绑定账号参与" else "仅发起者和管理员可见")
+            TicketAccessPolicyRows(ticket.accessPolicy)
             TicketInfoRow("提交时间", ticket.createdAt.toDisplayTime())
         }
     }
@@ -1043,7 +1031,7 @@ private fun TicketEditPanel(
     val haptic = LocalHapticFeedback.current
     var title by remember(ticket.id) { mutableStateOf(ticket.title) }
     var type by remember(ticket.id) { mutableStateOf(ticket.type) }
-    var targetVisibility by remember(ticket.id) { mutableStateOf(ticket.targetVisibility == "PUBLIC") }
+    var accessPolicy by remember(ticket.id) { mutableStateOf(ticket.accessPolicy) }
     var playerQuery by remember(ticket.id) { mutableStateOf("") }
     var selectedTargets by remember(ticket.id) {
         mutableStateOf(ticket.targets.map { TicketPlayerOption(it.mcUsername, it.authmeUsername) })
@@ -1052,7 +1040,7 @@ private fun TicketEditPanel(
 
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            TicketSectionTitle("修改工单信息", "仅在结单前可修改标题、类型、涉事玩家和可见性")
+            TicketSectionTitle("修改工单信息", "仅在结单前可修改标题、类型、涉事玩家和权限分配")
             TicketTextField(
                 value = title,
                 onValueChange = { if (it.length <= 120) title = it },
@@ -1076,8 +1064,20 @@ private fun TicketEditPanel(
                     )
                 }
             }
-            TicketInfoRow("管理员范围", if (ticket.adminVisibility == "SUPERADMIN") "仅全局管理员（不可修改）" else "全部 MC 管理员（不可修改）")
             TicketInfoRow("涉及服务器", if (ticket.serverScope == "ALL") "综合（不可修改）" else "${ticket.serverName ?: "指定服务器"}（不可修改）")
+            if (ticket.canManagePolicy) {
+                TicketAccessPolicyEditor(
+                    policy = accessPolicy,
+                    actions = optionsState.data?.accessActions.orEmpty(),
+                    groups = optionsState.data?.accessGroups.orEmpty(),
+                    targetCount = selectedTargets.size,
+                    enabled = enabled,
+                    onChange = { accessPolicy = it },
+                )
+            } else {
+                TicketAccessPolicyRows(ticket.accessPolicy)
+                TicketNotice("只有工单发起人和服主可以调整权限分配。")
+            }
             TicketPlayerPicker(
                 query = playerQuery,
                 onQueryChange = {
@@ -1095,16 +1095,9 @@ private fun TicketEditPanel(
                 },
                 onRemove = { username ->
                     selectedTargets = selectedTargets.filterNot { it.username == username }
-                    if (selectedTargets.isEmpty()) targetVisibility = false
+                    if (selectedTargets.isEmpty()) accessPolicy = accessPolicy.withoutTargetGroup()
                 },
                 enabled = enabled,
-            )
-            FilterChip(
-                selected = targetVisibility && selectedTargets.isNotEmpty(),
-                onClick = { targetVisibility = !targetVisibility },
-                label = { Text(if (targetVisibility) "允许涉事玩家查看" else "不允许涉事玩家查看") },
-                leadingIcon = { Icon(if (targetVisibility) Icons.Rounded.Person else Icons.Rounded.Lock, contentDescription = null) },
-                enabled = selectedTargets.isNotEmpty() && enabled,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = onCancel, enabled = !pending, modifier = Modifier.weight(1f)) { Text("取消") }
@@ -1120,8 +1113,8 @@ private fun TicketEditPanel(
                             UpdateTicketRequest(
                                 title = title.trim(),
                                 type = type,
-                                targetVisibility = if (targetVisibility && selectedTargets.isNotEmpty()) "PUBLIC" else "PRIVATE",
                                 targetNames = selectedTargets.map { it.username },
+                                accessPolicy = if (ticket.canManagePolicy) accessPolicy else null,
                             ),
                         ) { result -> result.onSuccess { onSaved() }.onFailure(onError) }
                     },
@@ -1134,6 +1127,162 @@ private fun TicketEditPanel(
                 }
             }
         }
+    }
+}
+
+private val fallbackTicketAccessActions = listOf(
+    TicketAccessActionOption("VIEW", "view", "查看", "能否打开并阅读工单内容。"),
+    TicketAccessActionOption("PARTICIPATE", "participate", "参与", "能否在工单内发送消息；需要登录。"),
+    TicketAccessActionOption("MANAGE", "manage", "管理", "能否编辑工单信息并结单；需要登录。"),
+)
+
+private val fallbackTicketAccessGroups = listOf(
+    TicketAccessGroupOption("PUBLIC", "公开", "查看允许未登录；参与和管理仍需要登录。", 0),
+    TicketAccessGroupOption("mc.admin", "管理员", "管理员及其继承的更高权限组。", 1),
+    TicketAccessGroupOption("mc.tech.admin", "技术管理员", "技术管理员和服主。", 2),
+    TicketAccessGroupOption("platform.superadmin", "服主", "服主始终拥有所有工单权限。", 3),
+)
+
+private fun accessEntry(policy: TicketAccessPolicy, key: String): TicketAccessEntry = when (key) {
+    "view" -> policy.view
+    "participate" -> policy.participate
+    "manage" -> policy.manage
+    else -> TicketAccessEntry()
+}
+
+private fun TicketAccessPolicy.withEntry(key: String, entry: TicketAccessEntry): TicketAccessPolicy = when (key) {
+    "view" -> copy(view = entry)
+    "participate" -> copy(participate = entry)
+    "manage" -> copy(manage = entry)
+    else -> this
+}
+
+private fun TicketAccessPolicy.withoutTargetGroup(): TicketAccessPolicy = copy(
+    view = view.copy(includeTargetGroup = false),
+    participate = participate.copy(includeTargetGroup = false),
+    manage = manage.copy(includeTargetGroup = false),
+)
+
+private fun TicketAccessPolicy.toggleTargetGroup(key: String): TicketAccessPolicy {
+    val entry = accessEntry(this, key)
+    val enabled = !entry.includeTargetGroup
+    if (enabled) return withEntry(key, entry.copy(includeTargetGroup = true))
+    return when (key) {
+        "view" -> withoutTargetGroup()
+        "participate" -> copy(
+            participate = participate.copy(includeTargetGroup = false),
+            manage = manage.copy(includeTargetGroup = false),
+        )
+        else -> copy(manage = manage.copy(includeTargetGroup = false))
+    }
+}
+
+private fun accessGroupLevel(groups: List<TicketAccessGroupOption>, code: String): Int =
+    groups.firstOrNull { it.value == code }?.level ?: 0
+
+private fun groupSelectionAllowed(
+    policy: TicketAccessPolicy,
+    key: String,
+    candidateLevel: Int,
+    groups: List<TicketAccessGroupOption>,
+): Boolean {
+    val viewLevel = accessGroupLevel(groups, policy.view.groupCode)
+    val participateLevel = accessGroupLevel(groups, policy.participate.groupCode)
+    val manageLevel = accessGroupLevel(groups, policy.manage.groupCode)
+    return when (key) {
+        "view" -> candidateLevel <= participateLevel && candidateLevel <= manageLevel
+        "participate" -> candidateLevel >= viewLevel && candidateLevel <= manageLevel
+        "manage" -> candidateLevel >= viewLevel && candidateLevel >= participateLevel
+        else -> true
+    }
+}
+
+private fun accessEntryLabel(entry: TicketAccessEntry): String {
+    val groupLabel = entry.groupLabel.ifBlank {
+        when (entry.groupCode) {
+            "PUBLIC" -> "公开"
+            "mc.admin" -> "管理员"
+            "mc.tech.admin" -> "技术管理员"
+            "platform.superadmin" -> "服主"
+            else -> entry.groupCode
+        }
+    }
+    return if (entry.includeTargetGroup) "$groupLabel + 涉事玩家组" else groupLabel
+}
+
+@Composable
+private fun TicketAccessPolicyRows(policy: TicketAccessPolicy) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        TicketInfoRow("查看权限", accessEntryLabel(policy.view))
+        TicketInfoRow("参与权限", accessEntryLabel(policy.participate))
+        TicketInfoRow("管理权限", accessEntryLabel(policy.manage))
+    }
+}
+
+@Composable
+private fun TicketAccessPolicyEditor(
+    policy: TicketAccessPolicy,
+    actions: List<TicketAccessActionOption>,
+    groups: List<TicketAccessGroupOption>,
+    targetCount: Int,
+    enabled: Boolean,
+    onChange: (TicketAccessPolicy) -> Unit,
+) {
+    val actionOptions = actions.ifEmpty { fallbackTicketAccessActions }
+    val groupOptions = groups.ifEmpty { fallbackTicketAccessGroups }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        actionOptions.forEachIndexed { index, action ->
+            val entry = accessEntry(policy, action.key)
+            val previousEntry = actionOptions.getOrNull(index - 1)?.let { accessEntry(policy, it.key) }
+            val targetEnabled = targetCount > 0 && (previousEntry == null || previousEntry.includeTargetGroup)
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(action.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                if (action.description.isNotBlank()) {
+                    Text(action.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    groupOptions.forEach { group ->
+                        val allowed = groupSelectionAllowed(policy, action.key, group.level, groupOptions)
+                        FilterChip(
+                            selected = entry.groupCode == group.value,
+                            onClick = {
+                                onChange(policy.withEntry(action.key, entry.copy(groupCode = group.value, groupLabel = group.label)))
+                            },
+                            label = { Text(group.label) },
+                            enabled = enabled && allowed,
+                        )
+                    }
+                }
+                Text(
+                    groupOptions.firstOrNull { it.value == entry.groupCode }?.description.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FilterChip(
+                    selected = entry.includeTargetGroup,
+                    onClick = { onChange(policy.toggleTargetGroup(action.key)) },
+                    label = {
+                        Text(if (entry.includeTargetGroup) "包含涉事玩家组" else "不包含涉事玩家组")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            if (entry.includeTargetGroup) Icons.Rounded.Person else Icons.Rounded.Lock,
+                            contentDescription = null,
+                        )
+                    },
+                    enabled = enabled && targetEnabled,
+                )
+            }
+        }
+        Text(
+            if (targetCount > 0) "涉事玩家组会继承到下一层权限；管理至少包含参与，参与至少包含查看。"
+            else "选择涉事玩家后，才能把涉事玩家组加入查看、参与或管理权限。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
