@@ -32,10 +32,10 @@ jobs:
           fi
       - name: 构建 debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: sh ./gradlew assembleDebug --no-daemon --stacktrace
       - name: 单元测试
         working-directory: android
-        run: ./gradlew testDebugUnitTest --no-daemon
+        run: sh ./gradlew testDebugUnitTest --no-daemon
       - uses: actions/upload-artifact@v4
         if: always()
         with:
