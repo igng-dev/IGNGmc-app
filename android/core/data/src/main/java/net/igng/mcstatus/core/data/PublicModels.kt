@@ -491,10 +491,30 @@ data class PublicPerfectRosterResponse(
 // ==================== Chat Archive (GET /api/v1/chat/*) ====================
 
 @Serializable
+data class ChatLastMessageDto(
+    val sender: String = "",
+    val content: String = "",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("is_self") val isSelf: Boolean = false,
+    @SerialName("logical_speaker") val logicalSpeaker: String? = null,
+    @SerialName("message_source_label") val messageSourceLabel: String? = null,
+)
+
+@Serializable
+data class ChatPersonaDto(
+    val id: String = "yunying",
+    val label: String = "云萤",
+    val description: String = "",
+)
+
+@Serializable
 data class ChatServerSourceDto(
     @SerialName("server_id") val serverId: String = "",
     @SerialName("numeric_server_id") val numericServerId: Int = 0,
     val name: String = "",
+    @SerialName("last_message_at") val lastMessageAt: String? = null,
+    @SerialName("last_preview") val lastPreview: String? = null,
+    @SerialName("last_message") val lastMessage: ChatLastMessageDto? = null,
 ) {
     val id: Int get() = if (numericServerId > 0) numericServerId else (V1Id.parseNumeric(serverId) ?: 0)
 }
@@ -505,9 +525,15 @@ data class ChatGroupSourceDto(
     val name: String = "",
     val platform: String = "qq",
     @SerialName("is_private") val isPrivate: Boolean = false,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+    @SerialName("is_admin_group") val isAdminGroup: Boolean = false,
+    @SerialName("is_tech_group") val isTechGroup: Boolean = false,
     @SerialName("message_count") val messageCount: Int = 0,
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     @SerialName("last_preview") val lastPreview: String? = null,
+    @SerialName("last_message") val lastMessage: ChatLastMessageDto? = null,
+    val persona: ChatPersonaDto? = null,
+    @SerialName("name_observed_at") val nameObservedAt: String? = null,
 )
 
 @Serializable
@@ -537,10 +563,71 @@ data class ChatAttachmentDto(
     @SerialName("size_bytes") val sizeBytes: Long? = null,
     val width: Int? = null,
     val height: Int? = null,
+    @SerialName("is_animated") val isAnimated: Boolean = false,
+    @SerialName("ocr_text") val ocrText: String? = null,
+    val transcript: String? = null,
     @SerialName("external_url") val externalUrl: String? = null,
 ) {
     val previewUrl: String? get() = thumbUrl ?: url
 }
+
+@Serializable
+data class ChatForwardChildDto(
+    @SerialName("sender_id") val senderId: String? = null,
+    val nickname: String = "",
+    val content: String = "",
+    @SerialName("created_at") val createdAt: String? = null,
+    val attachments: List<ChatAttachmentDto> = emptyList(),
+    val children: List<ChatStructurePartDto> = emptyList(),
+)
+
+@Serializable
+data class ChatStructurePartDto(
+    val type: String = "unknown",
+    @SerialName("part_index") val partIndex: Int? = null,
+    val id: String? = null,
+    @SerialName("card_type") val cardType: String? = null,
+    val title: String = "",
+    val description: String = "",
+    val summary: String = "",
+    val url: String? = null,
+    val nickname: String = "",
+    val name: String = "",
+    val text: String = "",
+    val qq: String? = null,
+    val content: String = "",
+    @SerialName("child_count") val childCount: Int = 0,
+    @SerialName("has_details") val hasDetails: Boolean = false,
+    val attachments: List<ChatAttachmentDto> = emptyList(),
+    val children: List<ChatForwardChildDto> = emptyList(),
+)
+
+@Serializable
+data class ChatSenderBadgeDto(
+    val key: String = "",
+    val label: String = "",
+    val tone: String = "default",
+)
+
+@Serializable
+data class ChatRelationshipDto(
+    val key: String = "",
+    val label: String = "",
+)
+
+@Serializable
+data class ChatSenderProfileDto(
+    val bound: Boolean = false,
+    @SerialName("igng_id") val igngId: Int? = null,
+    @SerialName("user_id") val userId: String? = null,
+    @SerialName("igng_nickname") val igngNickname: String? = null,
+    @SerialName("igng_username") val igngUsername: String? = null,
+    @SerialName("display_name") val displayName: String = "",
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+    val badges: List<ChatSenderBadgeDto> = emptyList(),
+    val relationship: ChatRelationshipDto? = null,
+    @SerialName("luckperms_groups") val lpGroups: List<String> = emptyList(),
+)
 
 @Serializable
 data class ChatMessageDto(
@@ -553,18 +640,29 @@ data class ChatMessageDto(
     @SerialName("sender_name") val senderName: String = "",
     @SerialName("sender_avatar") val senderAvatar: String? = null,
     @SerialName("is_bot") val isBot: Boolean = false,
+    @SerialName("is_self") val isSelf: Boolean = false,
+    @SerialName("logical_speaker") val logicalSpeaker: String? = null,
+    @SerialName("message_source") val messageSource: String? = null,
+    @SerialName("message_source_label") val messageSourceLabel: String? = null,
+    @SerialName("is_at_all") val isAtAll: Boolean = false,
     @SerialName("is_recalled") val isRecalled: Boolean = false,
+    @SerialName("recalled_at") val recalledAt: String? = null,
     @SerialName("persona_label") val personaLabel: String? = null,
     val content: String = "",
     @SerialName("reply_to") val replyTo: ChatReplyPreviewDto? = null,
     val attachments: List<ChatAttachmentDto> = emptyList(),
+    @SerialName("message_structure") val messageStructure: List<ChatStructurePartDto> = emptyList(),
     @SerialName("forward_summary") val forwardSummary: String? = null,
     @SerialName("has_forward") val has_forward: Boolean = false,
     @SerialName("created_at") val createdAt: String? = null,
 ) {
     val player_name: String get() = senderName
     val sent_at: String? get() = createdAt
-    val is_at_all: Boolean get() = content.contains("@全体成员") || content.contains("@all")
+    val is_at_all: Boolean
+        get() = isAtAll ||
+            content.contains("@全体成员") ||
+            content.contains("@所有人") ||
+            content.contains("@all")
     val allAttachments: List<ChatAttachmentDto> get() = attachments
 }
 
@@ -573,6 +671,9 @@ data class ChatLogsResponse(
     val messages: List<ChatMessageDto> = emptyList(),
     @SerialName("has_more") val hasMore: Boolean = false,
     @SerialName("focused_id") val focusedId: String? = null,
+    @SerialName("sender_profiles") val senderProfiles: Map<String, ChatSenderProfileDto> = emptyMap(),
+    val persona: ChatPersonaDto? = null,
+    @SerialName("channel_group_id") val channelGroupId: String? = null,
 )
 
 @Serializable
@@ -591,6 +692,7 @@ data class ChatForwardResponse(
     val title: String? = null,
     val summary: String? = null,
     val nodes: List<ChatForwardNodeDto> = emptyList(),
+    val structure: List<ChatStructurePartDto> = emptyList(),
 ) {
     val resolvedNodes: List<ChatForwardNodeDto> get() = nodes
 }

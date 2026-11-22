@@ -1,12 +1,15 @@
 package net.igng.mcstatus.core.data
 
 import android.content.Context
+import android.os.Build
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import coil3.ImageLoader
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import java.util.Collections
 import kotlinx.coroutines.flow.Flow
@@ -179,6 +182,11 @@ class IgngAppContainer(
     val imageLoader: ImageLoader = ImageLoader.Builder(appContext)
         .components {
             add(OkHttpNetworkFetcherFactory(callFactory = { okHttpClient }))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                add(AnimatedImageDecoder.Factory())
+            } else {
+                add(GifDecoder.Factory())
+            }
         }
         .build()
 

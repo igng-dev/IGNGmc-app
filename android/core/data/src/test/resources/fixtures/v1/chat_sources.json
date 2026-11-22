@@ -3,7 +3,17 @@
     {
       "server_id": "srv_3",
       "numeric_server_id": 3,
-      "name": "生存服 S6"
+      "name": "生存服 S6",
+      "last_message_at": "2026-11-22T12:00:00Z",
+      "last_preview": "主城东门修好了",
+      "last_message": {
+        "sender": "Alice_CN",
+        "content": "主城东门修好了",
+        "created_at": "2026-11-22T12:00:00Z",
+        "is_self": false,
+        "logical_speaker": null,
+        "message_source_label": null
+      }
     }
   ],
   "qq_groups": [
@@ -12,12 +22,82 @@
       "name": "IGNG 交流主群",
       "platform": "qq",
       "is_private": false,
+      "avatar_url": null,
+      "is_admin_group": false,
+      "is_tech_group": false,
       "message_count": 420,
       "last_message_at": "2026-11-22T12:00:00Z",
-      "last_preview": "晚上一起打龙吗"
+      "last_preview": "晚上一起打龙吗",
+      "last_message": {
+        "sender": "Alice",
+        "content": "晚上一起打龙吗",
+        "created_at": "2026-11-22T12:00:00Z",
+        "is_self": false,
+        "logical_speaker": "person",
+        "message_source_label": null
+      },
+      "persona": {
+        "id": "yunying",
+        "label": "云萤",
+        "description": "核心元气少女设定，带个性与风格档案"
+      },
+      "name_observed_at": null
+    },
+    {
+      "id": "700000000000101",
+      "name": "IGNG 微信玩家群",
+      "platform": "wechat",
+      "is_private": false,
+      "avatar_url": "https://img.igng.net/avatars/wx-group.webp",
+      "is_admin_group": false,
+      "is_tech_group": false,
+      "message_count": 86,
+      "last_message_at": "2026-11-22T11:30:00Z",
+      "last_preview": "已经记下来啦",
+      "last_message": {
+        "sender": "云萤",
+        "content": "已经记下来啦",
+        "created_at": "2026-11-22T11:30:00Z",
+        "is_self": true,
+        "logical_speaker": "agent",
+        "message_source_label": "AI 回复"
+      },
+      "persona": {
+        "id": "yunying",
+        "label": "云萤",
+        "description": "核心元气少女设定，带个性与风格档案"
+      },
+      "name_observed_at": null
     }
   ],
-  "private_chats": [],
+  "private_chats": [
+    {
+      "id": "-10001",
+      "name": "Alice",
+      "platform": "qq",
+      "is_private": true,
+      "avatar_url": null,
+      "is_admin_group": false,
+      "is_tech_group": false,
+      "message_count": 12,
+      "last_message_at": "2026-11-22T11:00:00Z",
+      "last_preview": "查一下昨晚的战利品",
+      "last_message": {
+        "sender": "Alice",
+        "content": "查一下昨晚的战利品",
+        "created_at": "2026-11-22T11:00:00Z",
+        "is_self": false,
+        "logical_speaker": "person",
+        "message_source_label": null
+      },
+      "persona": {
+        "id": "raw",
+        "label": "原生",
+        "description": "网页端 Gemini 原生知性风格，表达完整清晰"
+      },
+      "name_observed_at": null
+    }
+  ],
   "authenticated": true,
   "can_view_recalled": false
 }

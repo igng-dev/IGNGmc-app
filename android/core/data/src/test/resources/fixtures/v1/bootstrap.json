@@ -1,6 +1,6 @@
 {
-  "api_version": "1.12",
-  "contract_version": "1.12.0",
+  "api_version": "1.14",
+  "contract_version": "1.14.0",
   "server_time": "2026-11-22T12:00:00Z",
   "urls": {
     "api_base_url": "https://www.igng.net",

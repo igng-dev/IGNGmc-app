@@ -27,6 +27,7 @@ dependencies {
     api(project(":core:auth"))
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
