@@ -18,26 +18,44 @@ android {
         applicationId = "net.igng.mcstatus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 20000
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        val baseUrl = providers.gradleProperty("MC_STATUS_BASE_URL")
+        val mcBaseUrl = providers.gradleProperty("IGNG_MC_BASE_URL")
+            .orElse(providers.gradleProperty("MC_STATUS_BASE_URL"))
             .orElse("https://mc.igng.net")
             .get()
             .trimEnd('/')
-        buildConfigField("String", "MC_STATUS_BASE_URL", "\"$baseUrl\"")
+        val dashBaseUrl = providers.gradleProperty("IGNG_DASH_BASE_URL")
+            .orElse("https://dash.igng.net")
+            .get()
+            .trimEnd('/')
         val ssoBaseUrl = providers.gradleProperty("IGNG_SSO_BASE_URL")
             .orElse("https://sso.igng.net")
             .get()
             .trimEnd('/')
-        buildConfigField("String", "IGNG_SSO_BASE_URL", "\"$ssoBaseUrl\"")
-        val wikiBaseUrl = providers.gradleProperty("WIKI_BASE_URL")
+        val chatBaseUrl = providers.gradleProperty("IGNG_CHAT_BASE_URL")
+            .orElse("https://chat.igng.net")
+            .get()
+            .trimEnd('/')
+        val wikiBaseUrl = providers.gradleProperty("IGNG_WIKI_BASE_URL")
+            .orElse(providers.gradleProperty("WIKI_BASE_URL"))
             .orElse("https://docs.igng.net")
             .get()
             .trimEnd('/')
+        val mapRelayUrl = providers.gradleProperty("IGNG_MAP_RELAY_URL")
+            .orElse("https://map-api.igng.net")
+            .get()
+            .trimEnd('/')
+
+        buildConfigField("String", "MC_BASE_URL", "\"$mcBaseUrl\"")
+        buildConfigField("String", "DASH_BASE_URL", "\"$dashBaseUrl\"")
+        buildConfigField("String", "SSO_BASE_URL", "\"$ssoBaseUrl\"")
+        buildConfigField("String", "CHAT_BASE_URL", "\"$chatBaseUrl\"")
         buildConfigField("String", "WIKI_BASE_URL", "\"$wikiBaseUrl\"")
+        buildConfigField("String", "MAP_RELAY_URL", "\"$mapRelayUrl\"")
     }
 
     buildTypes {
@@ -74,24 +92,30 @@ kotlin {
 }
 
 dependencies {
-    implementation(platform(libs.androidx.compose.bom))
+    implementation(project(":core:model"))
+    implementation(project(":core:designsystem"))
+    implementation(project(":core:network"))
+    implementation(project(":core:auth"))
+    implementation(project(":core:data"))
+    implementation(project(":feature:explore"))
+    implementation(project(":feature:status"))
+    implementation(project(":feature:map"))
+    implementation(project(":feature:chat"))
+    implementation(project(":feature:wiki"))
+    implementation(project(":feature:player"))
+    implementation(project(":feature:ticket"))
+    implementation(project(":feature:admin"))
+
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.compose.foundation)
-    implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.text)
-    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.browser)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.okhttp)
+    implementation(libs.coil.compose)
 
-    debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation(libs.junit)
 }

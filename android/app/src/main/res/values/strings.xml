@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">IGNGmc</string>
+    <string name="shortcut_status_short">服务器状态</string>
+    <string name="shortcut_status_long">查看服务器实时状态墙</string>
+    <string name="shortcut_map_short">世界地图</string>
+    <string name="shortcut_map_long">打开 IGNGmc 世界地图</string>
+    <string name="shortcut_chat_short">聊天记录</string>
+    <string name="shortcut_chat_long">查看 MC 与 QQ 聊天记录</string>
+    <string name="shortcut_ticket_short">创建工单</string>
+    <string name="shortcut_ticket_long">新建 IGNGmc 客服工单</string>
 </resources>
