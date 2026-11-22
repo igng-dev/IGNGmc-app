@@ -34,7 +34,7 @@ class DtoDeserializationTest {
     @Test
     fun decodesBootstrapAndOAuthTokenFixtures() {
         val boot = json.decodeFromString<BootstrapResponse>(fixture("bootstrap.json"))
-        assertEquals("1.14", boot.apiVersion)
+        assertEquals("1.15", boot.apiVersion)
         assertEquals("https://www.igng.net", boot.urls.apiBaseUrl)
         assertTrue(boot.features.loginHistory.available)
         assertTrue(boot.features.penaltyHistory.available)

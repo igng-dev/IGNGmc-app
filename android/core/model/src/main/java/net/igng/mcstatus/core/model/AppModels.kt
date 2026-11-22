@@ -153,8 +153,8 @@ data class BootstrapViewerDto(
 
 @Serializable
 data class BootstrapResponse(
-    @SerialName("api_version") val apiVersion: String = "1.14",
-    @SerialName("contract_version") val contractVersion: String = "1.14.0",
+    @SerialName("api_version") val apiVersion: String = "1.15",
+    @SerialName("contract_version") val contractVersion: String = "1.15.0",
     @SerialName("server_time") val serverTime: String? = null,
     val urls: BootstrapUrlsDto = BootstrapUrlsDto(),
     val features: BootstrapFeaturesDto = BootstrapFeaturesDto(),
