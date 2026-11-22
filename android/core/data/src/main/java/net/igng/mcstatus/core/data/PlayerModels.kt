@@ -25,6 +25,8 @@ data class BoundMcAccountDto(
     @SerialName("account_id") val accountId: String = "",
     val username: String = "",
     val uuid: String? = null,
+    @SerialName("uuid_provenance") val uuidProvenance: String? = null,
+    val verified: Boolean = false,
     @SerialName("is_public") val isPublic: Boolean = false,
     @SerialName("bound_at") val boundAt: String? = null,
     @SerialName("last_login_at") val lastLoginAt: String? = null,
@@ -32,6 +34,8 @@ data class BoundMcAccountDto(
     @SerialName("is_muted") val isMuted: Boolean? = null,
     @SerialName("login_history_available") val loginHistoryAvailable: Boolean = false,
     @SerialName("penalty_history_available") val penaltyHistoryAvailable: Boolean = false,
+    @SerialName("login_history_since") val loginHistorySince: String? = null,
+    @SerialName("penalty_history_since") val penaltyHistorySince: String? = null,
 ) {
     val id: String get() = accountId.ifBlank { username }
     val resolvedName: String get() = username
@@ -43,10 +47,14 @@ data class BoundMcAccountDetailDto(
     @SerialName("account_id") val accountId: String = "",
     val username: String = "",
     val uuid: String? = null,
+    @SerialName("uuid_provenance") val uuidProvenance: String? = null,
+    val verified: Boolean = false,
     @SerialName("user_id") val userId: String? = null,
     @SerialName("is_public") val isPublic: Boolean = false,
     @SerialName("bound_at") val boundAt: String? = null,
     @SerialName("last_login_at") val lastLoginAt: String? = null,
+    @SerialName("login_history_since") val loginHistorySince: String? = null,
+    @SerialName("penalty_history_since") val penaltyHistorySince: String? = null,
 )
 
 @Serializable
@@ -58,6 +66,8 @@ data class PenaltyRecordDto(
     @SerialName("started_at") val startedAt: String? = null,
     @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("is_active") val isActive: Boolean = false,
+    @SerialName("server_scope") val serverScope: String? = null,
+    @SerialName("predates_registration") val predatesRegistration: Boolean = false,
 )
 
 @Serializable
@@ -82,6 +92,39 @@ data class McCharacterDetailsResponse(
 ) {
     val history: List<PenaltyRecordDto> get() = penalties.data
 }
+
+@Serializable
+data class McLoginRecordDto(
+    @SerialName("record_id") val recordId: String = "",
+    val username: String = "",
+    val uuid: String? = null,
+    @SerialName("server_id") val serverIdRaw: String? = null,
+    @SerialName("server_name") val serverName: String? = null,
+    @SerialName("is_success") val isSuccess: Boolean = true,
+    @SerialName("ip_address") val ipAddress: String? = null,
+    val world: String? = null,
+    val x: Double? = null,
+    val y: Double? = null,
+    val z: Double? = null,
+    @SerialName("recorded_at") val recordedAt: String? = null,
+) {
+    val serverId: Int get() = serverIdRaw?.let { V1Id.parseNumeric(it) } ?: 0
+}
+
+@Serializable
+data class McLoginRecordsFilterDto(
+    val username: String? = null,
+    @SerialName("server_id") val serverId: String? = null,
+)
+
+@Serializable
+data class McLoginRecordsResponse(
+    val data: List<McLoginRecordDto> = emptyList(),
+    val pagination: PaginationDto = PaginationDto(),
+    val filters: McLoginRecordsFilterDto = McLoginRecordsFilterDto(),
+    @SerialName("history_since") val historySince: String? = null,
+    @SerialName("unverified_accounts") val unverifiedAccounts: List<String> = emptyList(),
+)
 
 @Serializable
 data class McActionResult(

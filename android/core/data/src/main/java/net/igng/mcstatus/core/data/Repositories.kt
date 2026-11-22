@@ -278,8 +278,30 @@ class PlayerRepository(
     suspend fun fetchBoundAccounts(): List<BoundMcAccountDto> =
         json.decodeFromString<BoundMcAccountsResponse>(api.get("${endpoints.api}/api/v1/mc/accounts")).data
 
-    suspend fun fetchAccountDetails(username: String): McCharacterDetailsResponse =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/accounts/${Uri.encode(username)}"))
+    suspend fun fetchAccountDetails(username: String, page: Int = 1, pageSize: Int = 20): McCharacterDetailsResponse {
+        val url = "${endpoints.api}/api/v1/mc/accounts/${Uri.encode(username)}".toHttpUrl().newBuilder()
+            .addQueryParameter("page", page.coerceAtLeast(1).toString())
+            .addQueryParameter("page_size", pageSize.coerceIn(1, 50).toString())
+            .build().toString()
+        return json.decodeFromString(api.get(url))
+    }
+
+    suspend fun fetchLoginRecords(
+        username: String? = null,
+        serverId: Int? = null,
+        page: Int = 1,
+        pageSize: Int = 20,
+    ): McLoginRecordsResponse {
+        val url = "${endpoints.api}/api/v1/mc/login-records".toHttpUrl().newBuilder()
+            .addQueryParameter("page", page.coerceAtLeast(1).toString())
+            .addQueryParameter("page_size", pageSize.coerceIn(1, 50).toString())
+            .apply {
+                if (!username.isNullOrBlank()) addQueryParameter("username", username.trim())
+                if (serverId != null) addQueryParameter("server_id", V1Id.format("srv", serverId))
+            }
+            .build().toString()
+        return json.decodeFromString(api.get(url))
+    }
 
     suspend fun toggleAccountPublic(mcUsername: String, isPublic: Boolean): McActionResult {
         val body = buildJsonObject { put("is_public", isPublic) }

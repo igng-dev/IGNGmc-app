@@ -50,6 +50,7 @@ import net.igng.mcstatus.core.auth.CustomTabsLauncher
 import net.igng.mcstatus.core.data.BoundMcAccountDto
 import net.igng.mcstatus.core.data.CustomMedalSlotDto
 import net.igng.mcstatus.core.data.McCharacterDetailsResponse
+import net.igng.mcstatus.core.data.McLoginRecordsResponse
 import net.igng.mcstatus.core.data.MedalProfileDto
 import net.igng.mcstatus.core.data.PermissionInsightsResponse
 import net.igng.mcstatus.core.data.PersonalPerfectResponse
@@ -112,6 +113,7 @@ fun CharactersScreen(
 
     var detailTarget by remember { mutableStateOf<BoundMcAccountDto?>(null) }
     var detailData by remember { mutableStateOf<McCharacterDetailsResponse?>(null) }
+    var detailPage by remember { mutableStateOf(1) }
     var detailLoading by remember { mutableStateOf(false) }
 
     var resetTarget by remember { mutableStateOf<BoundMcAccountDto?>(null) }
@@ -175,6 +177,15 @@ fun CharactersScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text(acc.resolvedName, style = IgngTheme.type.sectionTitle, color = colors.textPrimary)
                                     Text("绑定于 ${IgngFormatters.formatIsoDateTime(acc.createdAt, short = true)}", style = IgngTheme.type.caption, color = colors.textSecondary)
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        IgngBadge(
+                                            text = if (acc.verified) "已核验 UUID" else "待核验身份",
+                                            tone = if (acc.verified) IgngBadgeTone.Success else IgngBadgeTone.Warning,
+                                        )
+                                        if (acc.isBanned == true) IgngBadge("封禁中", tone = IgngBadgeTone.Danger)
+                                        if (acc.isMuted == true) IgngBadge("禁言中", tone = IgngBadgeTone.Warning)
+                                    }
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(if (isPub) "公开" else "私密", style = IgngTheme.type.caption, color = colors.textSecondary)
@@ -199,9 +210,10 @@ fun CharactersScreen(
                                     text = "登录与处罚",
                                     onClick = {
                                         detailTarget = acc
+                                        detailPage = 1
                                         scope.launch {
                                             detailLoading = true
-                                            detailData = runCatching { playerRepository.fetchAccountDetails(acc.resolvedName) }.getOrNull()
+                                            detailData = runCatching { playerRepository.fetchAccountDetails(acc.resolvedName, page = 1) }.getOrNull()
                                             detailLoading = false
                                         }
                                     },
@@ -237,7 +249,7 @@ fun CharactersScreen(
 
     detailTarget?.let { acc ->
         IgngDetailSheet(
-            onDismiss = { detailTarget = null; detailData = null },
+            onDismiss = { detailTarget = null; detailData = null; detailPage = 1 },
             title = acc.resolvedName,
             subtitle = "登录信息与处罚记录",
         ) {
@@ -245,6 +257,17 @@ fun CharactersScreen(
                 IgngLoadingBlock(compact = true)
             } else {
                 val info = detailData
+                val isVerified = info?.account?.verified ?: acc.verified
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IgngBadge(
+                        text = if (isVerified) "已核验 UUID" else "待核验身份",
+                        tone = if (isVerified) IgngBadgeTone.Success else IgngBadgeTone.Warning,
+                    )
+                    info?.account?.uuidProvenance?.let { prov ->
+                        Text("来源：$prov", style = IgngTheme.type.caption, color = colors.textMuted)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 info?.account?.boundAt?.let {
                     Text("绑定时间：${IgngFormatters.formatIsoDateTime(it)}", style = IgngTheme.type.body, color = colors.textPrimary)
                 }
@@ -252,33 +275,130 @@ fun CharactersScreen(
                     Text("UUID：$it", style = IgngTheme.type.mono, color = colors.textSecondary)
                 }
                 val lastLoginAt = info?.account?.lastLoginAt
-                if (info?.loginHistoryAvailable == true && lastLoginAt != null) {
-                    Text("最近进服：${IgngFormatters.formatIsoDateTime(lastLoginAt)}", style = IgngTheme.type.body, color = colors.textPrimary)
+                if (info?.loginHistoryAvailable == true) {
+                    Text(
+                        if (lastLoginAt != null) "最近进服：${IgngFormatters.formatIsoDateTime(lastLoginAt)}" else "核验起算点后暂无进服记录",
+                        style = IgngTheme.type.body,
+                        color = colors.textPrimary,
+                    )
+                    info.account?.loginHistorySince?.let { since ->
+                        Text("登录历史起算点：${IgngFormatters.formatIsoDateTime(since)}", style = IgngTheme.type.caption, color = colors.textSecondary)
+                    }
                 } else {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "服务端已按隐私合规策略暂停游戏登录与处罚历史归因查询。",
+                        if (!isVerified) {
+                            "该角色尚未完成游戏内身份核验，请前往网页端角色页生成一次性验证码并在游戏内执行 /igng verify 解锁登录与处罚历史。"
+                        } else {
+                            "服务端当前未启用该角色的登录历史查询或尚未生成起算点。"
+                        },
                         style = IgngTheme.type.caption,
                         color = colors.textSecondary,
                     )
+                    if (!isVerified) {
+                        Spacer(Modifier.height(8.dp))
+                        IgngButton(
+                            text = "前往网页端核验",
+                            onClick = { CustomTabsLauncher.openExternalUrl(context, "${endpoints.dash}/mc/characters", colors.isDark) },
+                            style = IgngButtonStyle.Secondary,
+                            icon = Icons.Rounded.OpenInBrowser,
+                            compact = true,
+                        )
+                    }
                 }
                 Spacer(Modifier.height(10.dp))
                 val ban = info?.activePenalty?.ban
                 val mute = info?.activePenalty?.mute
                 if (ban != null) IgngBadge("生效封禁：${ban.reason ?: "无说明"}", tone = IgngBadgeTone.Danger)
-                if (mute != null) IgngBadge("生效禁言：${mute.reason ?: "无说明"}", tone = IgngBadgeTone.Warning)
+                if (mute != null) {
+                    Spacer(Modifier.height(6.dp))
+                    IgngBadge("生效禁言：${mute.reason ?: "无说明"}", tone = IgngBadgeTone.Warning)
+                }
                 if (ban == null && mute == null && info?.penaltyHistoryAvailable == true) {
                     IgngBadge("当前无生效处罚", tone = IgngBadgeTone.Success)
+                }
+                info?.account?.penaltyHistorySince?.let { since ->
+                    Spacer(Modifier.height(4.dp))
+                    Text("处罚历史起算点：${IgngFormatters.formatIsoDateTime(since)}", style = IgngTheme.type.caption, color = colors.textSecondary)
                 }
                 val history = info?.history.orEmpty()
                 if (history.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
-                    history.take(10).forEach { p ->
+                    history.forEach { p ->
                         IgngTile(soft = true, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), contentPadding = PaddingValues(10.dp)) {
-                            Text("${p.type ?: "处罚"} · ${p.reason ?: "无理由"}", style = IgngTheme.type.bodyMedium, color = colors.textPrimary)
-                            Text("操作人：${p.adminName ?: "系统"} · ${IgngFormatters.formatIsoDateTime(p.startedAt)}", style = IgngTheme.type.caption, color = colors.textSecondary)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "${if (p.type.equals("mute", true)) "禁言" else "封禁"} · ${p.reason ?: "无理由"}",
+                                    style = IgngTheme.type.bodyMedium,
+                                    color = colors.textPrimary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (p.isActive) {
+                                    IgngBadge("生效中", tone = IgngBadgeTone.Danger)
+                                }
+                            }
+                            Text(
+                                "操作人：${p.adminName ?: "控制台"} · ${IgngFormatters.formatIsoDateTime(p.startedAt)}" +
+                                    (p.expiresAt?.let { " · 到期 ${IgngFormatters.formatIsoDateTime(it, short = true)}" } ?: " · 永久/已解除"),
+                                style = IgngTheme.type.caption,
+                                color = colors.textSecondary,
+                            )
+                            if (p.predatesRegistration || !p.serverScope.isNullOrBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    p.serverScope?.takeIf { it.isNotBlank() }?.let { scopeLabel ->
+                                        IgngBadge("范围：$scopeLabel", tone = IgngBadgeTone.Neutral)
+                                    }
+                                    if (p.predatesRegistration) {
+                                        IgngBadge("注册前关联记录", tone = IgngBadgeTone.Warning)
+                                    }
+                                }
+                            }
                         }
                     }
+                    val pag = info?.penalties?.pagination
+                    if (pag != null && pag.totalPages > 1) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IgngButton(
+                                text = "上一页",
+                                enabled = detailPage > 1,
+                                onClick = {
+                                    val nextPage = (detailPage - 1).coerceAtLeast(1)
+                                    detailPage = nextPage
+                                    scope.launch {
+                                        detailLoading = true
+                                        detailData = runCatching { playerRepository.fetchAccountDetails(acc.resolvedName, page = nextPage) }.getOrNull()
+                                        detailLoading = false
+                                    }
+                                },
+                                style = IgngButtonStyle.Secondary,
+                                compact = true,
+                            )
+                            Text("第 ${pag.page} / ${pag.totalPages} 页", style = IgngTheme.type.caption, color = colors.textSecondary)
+                            IgngButton(
+                                text = "下一页",
+                                enabled = detailPage < pag.totalPages,
+                                onClick = {
+                                    val nextPage = (detailPage + 1).coerceAtMost(pag.totalPages)
+                                    detailPage = nextPage
+                                    scope.launch {
+                                        detailLoading = true
+                                        detailData = runCatching { playerRepository.fetchAccountDetails(acc.resolvedName, page = nextPage) }.getOrNull()
+                                        detailLoading = false
+                                    }
+                                },
+                                style = IgngButtonStyle.Secondary,
+                                compact = true,
+                            )
+                        }
+                    }
+                } else if (info?.penaltyHistoryAvailable == true) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("当前无历史处罚记录。", style = IgngTheme.type.caption, color = colors.textSecondary)
                 }
             }
         }
@@ -765,20 +885,221 @@ fun MyFakePlayersScreen(playerRepository: PlayerRepository, onBack: () -> Unit) 
 }
 
 @Composable
-fun LoginActivityScreen(bootstrap: BootstrapResponse?, onBack: () -> Unit) {
+fun LoginActivityScreen(
+    bootstrap: BootstrapResponse?,
+    endpoints: SiteEndpoints,
+    playerRepository: PlayerRepository,
+    onBack: () -> Unit,
+) {
+    val colors = IgngTheme.colors
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val feature = bootstrap?.features?.loginHistory
+    val verifiedAccounts = remember(bootstrap) {
+        bootstrap?.viewer?.boundMcAccounts?.filter { it.verified }.orEmpty()
+    }
+    var selectedUsername by remember { mutableStateOf<String?>(null) }
+    var page by remember { mutableStateOf(1) }
+    var loading by remember { mutableStateOf(feature?.available == true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var data by remember { mutableStateOf<McLoginRecordsResponse?>(null) }
+
+    suspend fun loadRecords(targetUser: String?, targetPage: Int) {
+        if (feature?.available != true) return
+        loading = true
+        error = null
+        runCatching {
+            playerRepository.fetchLoginRecords(username = targetUser, page = targetPage, pageSize = 20)
+        }
+            .onSuccess { data = it }
+            .onFailure { error = it.message ?: "登录历史读取失败" }
+        loading = false
+    }
+
+    LaunchedEffect(feature?.available, selectedUsername, page) {
+        if (feature?.available == true) {
+            loadRecords(selectedUsername, page)
+        }
+    }
+
     IgngAmbientCanvas {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            IgngTopBar(title = "登录与活动", subtitle = "Minecraft 游戏内登录安全回溯", onBack = onBack)
-            Box(Modifier.padding(16.dp)) {
-                IgngStateBlock(
-                    title = if (feature?.available == true) "还没有登录记录" else "游戏登录历史暂未开放",
-                    description = if (feature?.available == true) {
-                        "当前绑定的角色暂无进服登录记录。"
-                    } else {
-                        "服务端已按隐私与身份归因治理策略暂停游戏内登录流水查询，待新归因表上线后将在 /api/v1/mc/bootstrap 自动启用。"
-                    },
-                )
+            IgngTopBar(
+                title = "登录与活动",
+                subtitle = "Minecraft 游戏内登录安全回溯",
+                onBack = onBack,
+                actions = {
+                    IgngButton(
+                        text = "角色核验",
+                        onClick = { CustomTabsLauncher.openExternalUrl(context, "${endpoints.dash}/mc/characters", colors.isDark) },
+                        style = IgngButtonStyle.Secondary,
+                        icon = Icons.Rounded.OpenInBrowser,
+                        compact = true,
+                    )
+                },
+            )
+            when {
+                feature?.available != true -> {
+                    val isNeedVerify = feature?.reason == "verification_required"
+                    val isUnauth = feature?.reason == "unauthenticated"
+                    Box(Modifier.padding(16.dp)) {
+                        IgngStateBlock(
+                            title = when {
+                                isNeedVerify -> "需要完成游戏内身份核验"
+                                isUnauth -> "请先登录 IGNG 账号"
+                                else -> "游戏登录历史暂未开放"
+                            },
+                            description = when {
+                                isNeedVerify -> "请先在网页端角色页为已绑定角色生成一次性验证码，并在游戏内执行 /igng verify（或 /igng bind）完成核验后即可查看登录历史。"
+                                isUnauth -> "登录后即可查看已完成身份核验的 Minecraft 角色登录流水。"
+                                else -> "服务端当前已暂停游戏内登录流水归因查询，待恢复后将在 /api/v1/mc/bootstrap 自动启用。"
+                            },
+                            actionLabel = if (isNeedVerify) "前往网页端核验" else null,
+                            onAction = if (isNeedVerify) {
+                                { CustomTabsLauncher.openExternalUrl(context, "${endpoints.dash}/mc/characters", colors.isDark) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+                loading && data == null -> Box(Modifier.padding(16.dp)) { IgngSkeletonRows(4) }
+                error != null && data == null -> Box(Modifier.padding(16.dp)) {
+                    IgngStateBlock(
+                        title = "读取失败",
+                        description = error,
+                        isError = true,
+                        actionLabel = "重试",
+                        onAction = { scope.launch { loadRecords(selectedUsername, page) } },
+                    )
+                }
+                else -> {
+                    val res = data
+                    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (verifiedAccounts.size > 1) {
+                            item {
+                                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    IgngBadge(
+                                        text = "全部已核验角色",
+                                        tone = if (selectedUsername == null) IgngBadgeTone.Accent else IgngBadgeTone.Neutral,
+                                        modifier = Modifier.clickable {
+                                            selectedUsername = null
+                                            page = 1
+                                        },
+                                    )
+                                    verifiedAccounts.forEach { acc ->
+                                        IgngBadge(
+                                            text = acc.username,
+                                            tone = if (selectedUsername == acc.username) IgngBadgeTone.Accent else IgngBadgeTone.Neutral,
+                                            modifier = Modifier.clickable {
+                                                selectedUsername = acc.username
+                                                page = 1
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!res?.historySince.isNullOrBlank() || !res?.unverifiedAccounts.isNullOrEmpty()) {
+                            item {
+                                IgngTile(soft = true, modifier = Modifier.fillMaxWidth()) {
+                                    res?.historySince?.let { since ->
+                                        Text(
+                                            "仅展示已完成身份核验起算点（${IgngFormatters.formatIsoDateTime(since)}）之后的归属登录记录。",
+                                            style = IgngTheme.type.caption,
+                                            color = colors.textSecondary,
+                                        )
+                                    }
+                                    val unverified = res?.unverifiedAccounts.orEmpty()
+                                    if (unverified.isNotEmpty()) {
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            "待核验角色（暂不展示登录流水）：${unverified.joinToString("、")}",
+                                            style = IgngTheme.type.caption,
+                                            color = colors.textPrimary,
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        IgngButton(
+                                            text = "前往网页端完成核验",
+                                            onClick = { CustomTabsLauncher.openExternalUrl(context, "${endpoints.dash}/mc/characters", colors.isDark) },
+                                            style = IgngButtonStyle.Secondary,
+                                            icon = Icons.Rounded.OpenInBrowser,
+                                            compact = true,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        val records = res?.data.orEmpty()
+                        if (records.isEmpty()) {
+                            item {
+                                IgngStateBlock(
+                                    title = "还没有登录记录",
+                                    description = "当前筛选条件在身份核验起算点之后暂无进服登录记录。",
+                                )
+                            }
+                        } else {
+                            itemsIndexed(records, key = { i, r -> "${r.recordId}:$i" }) { idx, rec ->
+                                IgngTile(modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx)) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(rec.username, style = IgngTheme.type.cardTitle, color = colors.textPrimary)
+                                            Text(
+                                                "${rec.serverName ?: "服务器 ${rec.serverId}"} · ${IgngFormatters.formatIsoDateTime(rec.recordedAt)}",
+                                                style = IgngTheme.type.caption,
+                                                color = colors.textSecondary,
+                                            )
+                                        }
+                                        IgngBadge(
+                                            text = if (rec.isSuccess) "登录成功" else "登录失败",
+                                            tone = if (rec.isSuccess) IgngBadgeTone.Success else IgngBadgeTone.Danger,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    val location = if (!rec.world.isNullOrBlank()) {
+                                        "${IgngFormatters.worldLabel(rec.world)} (${IgngFormatters.formatCoordinate(rec.x, rec.y, rec.z)})"
+                                    } else {
+                                        "未上报坐标"
+                                    }
+                                    Text(
+                                        "IP：${rec.ipAddress ?: "未知"} · $location",
+                                        style = IgngTheme.type.mono,
+                                        color = colors.textMuted,
+                                    )
+                                }
+                            }
+
+                            val pag = res?.pagination
+                            if (pag != null && pag.totalPages > 1) {
+                                item {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        IgngButton(
+                                            text = "上一页",
+                                            enabled = page > 1 && !loading,
+                                            onClick = { page = (page - 1).coerceAtLeast(1) },
+                                            style = IgngButtonStyle.Secondary,
+                                            compact = true,
+                                        )
+                                        Text("第 ${pag.page} / ${pag.totalPages} 页 · 共 ${pag.total} 条", style = IgngTheme.type.caption, color = colors.textSecondary)
+                                        IgngButton(
+                                            text = "下一页",
+                                            enabled = page < pag.totalPages && !loading,
+                                            onClick = { page = (page + 1).coerceAtMost(pag.totalPages) },
+                                            style = IgngButtonStyle.Secondary,
+                                            compact = true,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

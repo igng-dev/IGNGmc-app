@@ -12,12 +12,12 @@
   },
   "features": {
     "login_history": {
-      "available": false,
-      "reason": "identity_attribution_disabled"
+      "available": true,
+      "reason": null
     },
     "penalty_history": {
-      "available": false,
-      "reason": "identity_attribution_disabled"
+      "available": true,
+      "reason": null
     },
     "mc_account_bind_web_only": true,
     "wiki_default_kb": "IGNGmc"
@@ -38,7 +38,9 @@
       {
         "account_id": "mca_128",
         "username": "Alice_CN",
-        "uuid": "4d9a2b0e-1111-2222-3333-444455556666",
+        "uuid": "4d9a2b0e-1111-3222-8333-444455556666",
+        "uuid_provenance": "ingame_verify",
+        "verified": true,
         "is_public": true
       }
     ]

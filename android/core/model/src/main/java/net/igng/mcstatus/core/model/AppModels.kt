@@ -136,6 +136,8 @@ data class BootstrapBoundAccountDto(
     @SerialName("account_id") val accountId: String = "",
     val username: String = "",
     val uuid: String? = null,
+    @SerialName("uuid_provenance") val uuidProvenance: String? = null,
+    val verified: Boolean = false,
     @SerialName("is_public") val isPublic: Boolean = false,
 )
 
@@ -151,8 +153,8 @@ data class BootstrapViewerDto(
 
 @Serializable
 data class BootstrapResponse(
-    @SerialName("api_version") val apiVersion: String = "1.12",
-    @SerialName("contract_version") val contractVersion: String = "1.12.0",
+    @SerialName("api_version") val apiVersion: String = "1.14",
+    @SerialName("contract_version") val contractVersion: String = "1.14.0",
     @SerialName("server_time") val serverTime: String? = null,
     val urls: BootstrapUrlsDto = BootstrapUrlsDto(),
     val features: BootstrapFeaturesDto = BootstrapFeaturesDto(),
