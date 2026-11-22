@@ -4,6 +4,7 @@ name: CI
 # android-actions/setup-android@v3 会去安装已被 Google 下架的 tools 包而崩溃，故删除该步骤。
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -11,13 +12,22 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 隐私与凭据卫生检查
+        run: bash scripts/check-privacy.sh --all
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -42,3 +52,4 @@ jobs:
           name: debug-apk-${{ github.event.number || github.sha }}
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
+          retention-days: 7
