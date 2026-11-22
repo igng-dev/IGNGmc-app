@@ -125,7 +125,7 @@ fun WikiCatalogScreen(
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             IgngTopBar(
                 title = "IGNGmc 百科",
-                subtitle = if (usingCache) "离线缓存已就绪" else "来自 docs.igng.net 官方文档",
+                subtitle = if (usingCache) "离线缓存已就绪" else "官方 IGNGmc 知识库文档",
             )
             IgngSearchField(
                 value = search,

@@ -1,0 +1,74 @@
+{
+  "available": true,
+  "schema_version": "003",
+  "accounts": [
+    "Alice_CN"
+  ],
+  "medals": [
+    {
+      "assignment_id": "grd_771",
+      "medal_id": "mcd_12",
+      "name": "开服元老",
+      "description": "首届建筑赛冠军",
+      "icon_material": "nether_star",
+      "sort_order": 10,
+      "scope": "server",
+      "server_id": "srv_3",
+      "server_name": "生存服",
+      "username": "Alice_CN",
+      "granted_at": "2026-08-01T00:00:00Z",
+      "issuer": "Admin01",
+      "reason": "首届建筑赛冠军"
+    }
+  ],
+  "groups": [
+    {
+      "key": "server-3",
+      "label": "生存服",
+      "scope": "server",
+      "server_id": "srv_3",
+      "items": [
+        {
+          "assignment_id": "grd_771",
+          "medal_id": "mcd_12",
+          "name": "开服元老",
+          "description": "首届建筑赛冠军",
+          "icon_material": "nether_star",
+          "sort_order": 10,
+          "scope": "server",
+          "server_id": "srv_3",
+          "server_name": "生存服",
+          "username": "Alice_CN",
+          "granted_at": "2026-08-01T00:00:00Z",
+          "issuer": "Admin01",
+          "reason": "首届建筑赛冠军"
+        }
+      ]
+    }
+  ],
+  "servers": [
+    {
+      "server_id": "srv_3",
+      "server_name": "生存服",
+      "medal_count": 1,
+      "playtime_seconds": 36000
+    }
+  ],
+  "custom_medals": [
+    {
+      "username": "Alice_CN",
+      "name_key": "alice_cn",
+      "name": "星辰旅者",
+      "is_customized": true,
+      "updated_at": "2026-11-22T12:00:00Z"
+    }
+  ],
+  "summary": {
+    "account_count": 1,
+    "medal_count": 1,
+    "global_count": 0,
+    "server_medal_count": 1,
+    "server_count": 1,
+    "total_playtime_seconds": 36000
+  }
+}

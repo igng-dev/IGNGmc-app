@@ -691,9 +691,10 @@ fun CommunityHallScreen(
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text("#${t.id} ${t.title}", style = IgngTheme.type.cardTitle, color = colors.textPrimary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             Spacer(Modifier.width(8.dp))
+                                            val closed = t.status.equals("closed", ignoreCase = true)
                                             IgngBadge(
-                                                text = t.statusLabel.ifBlank { if (t.status == "CLOSED") "已结单" else "处理中" },
-                                                tone = if (t.status == "CLOSED") IgngBadgeTone.Neutral else IgngBadgeTone.Success,
+                                                text = t.statusLabel.ifBlank { if (closed) "已结单" else "处理中" },
+                                                tone = if (closed) IgngBadgeTone.Neutral else IgngBadgeTone.Success,
                                             )
                                         }
                                         Spacer(Modifier.height(4.dp))

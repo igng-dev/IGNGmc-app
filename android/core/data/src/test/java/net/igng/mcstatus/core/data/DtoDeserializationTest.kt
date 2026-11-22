@@ -1,12 +1,20 @@
 package net.igng.mcstatus.core.data
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import net.igng.mcstatus.core.auth.OAuthTokenResponse
+import net.igng.mcstatus.core.model.BootstrapResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * Contract drift guard: deserializes EVERY golden JSON fixture exported directly from
+ * `IGNG站点/contracts/fixtures/igngmc-v1/` using the production Kotlin DTOs.
+ */
 class DtoDeserializationTest {
 
     private val json = Json {
@@ -16,242 +24,223 @@ class DtoDeserializationTest {
         explicitNulls = false
     }
 
-    @Test
-    fun decodesHomeServersAndAllKnownSeasons() {
-        val raw = """
-            {
-              "families": [
-                {
-                  "slug": "clear",
-                  "name": "明净界",
-                  "themeKey": "clear",
-                  "tagline": "原版纯净生电生存",
-                  "primarySeason": {
-                    "slug": "clear-s4",
-                    "label": "四周目",
-                    "state": "live",
-                    "primary": true,
-                    "address": "clear.mc.igng.net",
-                    "version": "1.21.4",
-                    "hasMap": true
-                  },
-                  "aliveSeasons": [
-                    {
-                      "slug": "clear-s4",
-                      "label": "四周目",
-                      "state": "live",
-                      "primary": true
-                    }
-                  ],
-                  "historicalSeasons": [
-                    {
-                      "slug": "clear-s3",
-                      "label": "三周目",
-                      "state": "retired",
-                      "mapMode": "snapshot"
-                    }
-                  ]
-                }
-              ]
-            }
-        """.trimIndent()
+    private fun fixture(name: String): String =
+        requireNotNull(javaClass.classLoader?.getResourceAsStream("fixtures/v1/$name")) {
+            "Missing golden fixture: fixtures/v1/$name"
+        }.bufferedReader(Charsets.UTF_8).use { it.readText() }
 
-        val parsed = json.decodeFromString<HomeServersResponse>(raw)
-        assertEquals(1, parsed.families.size)
-        val family = parsed.families.first()
-        assertEquals("明净界", family.name)
-        assertEquals(2, family.allKnownSeasons.size)
-        assertEquals("clear-s4", family.primarySeason?.slug)
-        assertEquals("clear.mc.igng.net", family.primarySeason?.address)
+    @Test
+    fun decodesBootstrapAndOAuthTokenFixtures() {
+        val boot = json.decodeFromString<BootstrapResponse>(fixture("bootstrap.json"))
+        assertEquals("1.12", boot.apiVersion)
+        assertEquals("https://www.igng.net", boot.urls.apiBaseUrl)
+        assertFalse(boot.features.loginHistory.available)
+        assertTrue(boot.viewer.authenticated)
+        assertEquals(1024, boot.viewer.user?.resolvedNumericId)
+        assertEquals("SUPERADMIN", boot.viewer.adminRole)
+        assertEquals(1, boot.viewer.boundMcAccounts.size)
+
+        val token = json.decodeFromString<OAuthTokenResponse>(fixture("oauth_token.json"))
+        assertEquals("Bearer", token.tokenType)
+        assertEquals(3600L, token.expiresIn)
+        assertFalse(token.accessToken.isNullOrBlank())
+        assertFalse(token.refreshToken.isNullOrBlank())
+        assertEquals(1024, token.user?.id)
+
+        val dailyObj = json.parseToJsonElement(fixture("daily_login.json")).jsonObject
+        assertEquals("true", dailyObj["awarded"]?.jsonPrimitive?.content)
+        assertEquals("1250", dailyObj["exp"]?.jsonPrimitive?.content)
+        assertEquals("13", dailyObj["level"]?.jsonPrimitive?.content)
+
+        val errObj = json.parseToJsonElement(fixture("error_envelope.json")).jsonObject
+        val nested = errObj["error"]?.jsonObject
+        assertEquals("ticket.not_found", nested?.get("code")?.jsonPrimitive?.content)
+        assertFalse(nested?.get("message")?.jsonPrimitive?.content.isNullOrBlank())
     }
 
     @Test
-    fun decodesPublicStatusAndHistorySeries() {
-        val statusRaw = """
-            {
-              "generatedAt": "2026-11-22T09:00:00.000Z",
-              "collector": {
-                "id": 1,
-                "label": "los-vps",
-                "ageSeconds": 12.5,
-                "freshness": "fresh"
-              },
-              "servers": [
-                {
-                  "id": 7,
-                  "slug": "clear-s4",
-                  "name": "明净界 · 四周目",
-                  "familySlug": "clear",
-                  "themeKey": "clear",
-                  "online": true,
-                  "status": "online",
-                  "onlinePlayers": 14,
-                  "pingMs": 38.4,
-                  "tps": 19.98,
-                  "mspt": 14.2,
-                  "unknownFutureField": "ignored"
-                }
-              ]
-            }
-        """.trimIndent()
+    fun decodesServersMotdStatusAndHistoryFixtures() {
+        val catalog = json.decodeFromString<HomeServersResponse>(fixture("servers.json"))
+        assertEquals(1, catalog.families.size)
+        val family = catalog.families.first()
+        assertEquals("survival", family.slug)
+        assertEquals(3, family.primarySeason?.serverId)
+        assertTrue(family.allKnownSeasons.isNotEmpty())
+        assertEquals(1, catalog.servers.size)
 
-        val status = json.decodeFromString<PublicStatusResponse>(statusRaw)
+        val motd = json.decodeFromString<MotdResponse>(fixture("server_motd.json"))
+        assertEquals("srv_3", motd.serverId)
+        assertTrue(motd.online)
+        assertEquals(18, motd.players?.online)
+
+        val status = json.decodeFromString<PublicStatusResponse>(fixture("status_public.json"))
         assertEquals("fresh", status.collector?.freshness)
         assertEquals(1, status.servers.size)
-        assertEquals(14, status.servers.first().onlinePlayers)
-        assertEquals(19.98, status.servers.first().tps ?: 0.0, 0.001)
+        val srv = status.servers.first()
+        assertEquals(3, srv.id)
+        assertEquals("srv_3", srv.resolvedServerId)
+        assertEquals(18, srv.onlinePlayers)
+        assertEquals(19.95, srv.tps ?: 0.0, 0.001)
 
-        val historyRaw = """
-            {
-              "bucketMinutes": 16,
-              "data": {
-                "7": {
-                  "latencies": [
-                    {"avg_latency_ms": 41.2, "packet_loss_pct": 0.0, "timestamp_utc": "2026-11-22T08:00:00Z", "status": "online"}
-                  ],
-                  "performance": [
-                    {"avg_tps": 20.0, "avg_mspt": 12.1, "online_players": 10, "recorded_at": "2026-11-22T08:00:00Z"}
-                  ],
-                  "statusGrid": {
-                    "segments": 2,
-                    "buckets": [
-                      {"start": "2026-11-22T08:00:00Z", "status": "online", "coverageLabel": "100%"},
-                      {"start": "2026-11-22T08:16:00Z", "status": "degraded", "coverageLabel": "92%"}
-                    ]
-                  }
-                }
-              }
-            }
-        """.trimIndent()
-
-        val history = json.decodeFromString<PublicStatusHistoryResponse>(historyRaw)
-        val series = history.data["7"]
+        val history = json.decodeFromString<PublicStatusHistoryResponse>(fixture("status_history.json"))
+        assertEquals(15, history.bucketMinutes)
+        val series = history.seriesFor(3)
         assertNotNull(series)
         assertEquals(1, series?.latencies?.size)
-        assertEquals(2, series?.statusGrid?.buckets?.size)
+        assertEquals(1, series?.performance?.size)
+        assertEquals(1, series?.statusGrid?.size)
     }
 
     @Test
-    fun decodesTicketDetailCapabilitiesAndAttachments() {
-        val raw = """
-            {
-              "ticket": {
-                "id": 42,
-                "title": "领地权限协助排查",
-                "type": "SUPPORT",
-                "typeLabel": "技术协助",
-                "status": "OPEN",
-                "statusLabel": "处理中",
-                "creatorName": "Steve",
-                "capabilities": {
-                  "canReply": true,
-                  "canEdit": true,
-                  "canClose": true,
-                  "canReopen": false
-                },
-                "messages": [
-                  {
-                    "id": 101,
-                    "authorName": "Steve",
-                    "kind": "INITIAL",
-                    "content": "箱子容器无法开启",
-                    "attachments": [
-                      {"mediaId": "m-99", "previewUrl": "/api/mc/media/messages/101/m-99"}
-                    ]
-                  }
-                ]
-              }
-            }
-        """.trimIndent()
+    fun decodesTicketsFixtures() {
+        val list = json.decodeFromString<TicketListResponse>(fixture("tickets_list.json"))
+        assertEquals(1, list.total)
+        assertEquals(2048, list.resolvedTickets.first().id)
+        assertEquals("appeal", list.resolvedTickets.first().type)
+        assertEquals("申诉", list.resolvedTickets.first().typeLabel)
+        assertEquals("open", list.resolvedTickets.first().status)
 
-        val detail = json.decodeFromString<TicketDetailResponse>(raw).ticket
-        assertEquals(42, detail.id)
+        val detail = json.decodeFromString<TicketDetailDto>(fixture("ticket_detail.json"))
+        assertEquals(2048, detail.id)
+        assertEquals("\"tk-2048-95ce5f92\"", detail.etag)
         assertTrue(detail.effectiveCanReply)
+        assertTrue(detail.effectiveCanEdit)
         assertTrue(detail.effectiveCanClose)
         assertFalse(detail.effectiveCanReopen)
-        assertEquals("m-99", detail.messages.first().attachments.first().resolvedMediaId)
+        assertEquals("Alice", detail.creatorName)
+        assertEquals(1, detail.messages.size)
+        assertEquals("med_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", detail.messages.first().attachments.first().resolvedMediaId)
     }
 
     @Test
-    fun decodesVaultVanillaStatsMedalsChatAndAdminPayloads() {
+    fun decodesPlayerAssetsStatsMedalsPermissionsAndPerfectFixtures() {
+        val accounts = json.decodeFromString<BoundMcAccountsResponse>(fixture("mc_accounts.json"))
+        assertEquals(1, accounts.data.size)
+        assertEquals("Alice_CN", accounts.data.first().resolvedName)
+        assertTrue(accounts.data.first().isPublic)
+
+        val lands = json.decodeFromString<PlayerLandsResponse>(fixture("mc_lands.json"))
+        assertEquals(1, lands.total)
+        val land = lands.records.first()
+        assertEquals(4091, land.id)
+        assertEquals(3, land.server_id)
+        assertTrue(land.can_edit)
+        assertTrue(land.is_public)
+
+        val stats = json.decodeFromString<VanillaStatsResponse>(fixture("stats.json"))
+        assertTrue(stats.available)
+        assertEquals(36000L, stats.summary.playTimeSeconds)
+        assertEquals(12345L, stats.summary.blocksMined)
+        assertEquals(3, stats.servers.first().serverId)
+        assertEquals("石头", stats.topMined.first().label)
+
+        val medals = json.decodeFromString<MedalProfileDto>(fixture("medals.json"))
+        assertEquals(1, medals.allActiveMedals.size)
+        assertEquals("开服元老", medals.allActiveMedals.first().name)
+        assertEquals("Alice_CN", medals.customMedals.first().ownerName)
+        assertEquals("星辰旅者", medals.customMedals.first().customName)
+
+        val perms = json.decodeFromString<PlayerPermissionsResponse>(fixture("mc_permissions.json"))
+        assertEquals("luck_perms", perms.source)
+        assertEquals(1, perms.accounts.size)
+        assertEquals("essentials.home", perms.accounts.first().groups.first().permissions.first().nodeKey)
+        assertTrue(perms.accounts.first().independentPermissions.first().value)
+
+        val perfect = json.decodeFromString<PublicPerfectRosterResponse>(fixture("perfect_public.json"))
+        assertEquals(5, perfect.total)
+        assertEquals(1, perfect.members.size)
+        assertEquals(1024, perfect.members.first().igngId)
+    }
+
+    @Test
+    fun decodesChatAndWikiFixtures() {
+        val sources = json.decodeFromString<ChatSourcesResponse>(fixture("chat_sources.json"))
+        assertEquals(3, sources.servers.first().id)
+        assertEquals("123456789", sources.qqGroups.first().id)
+
+        val messages = json.decodeFromString<ChatLogsResponse>(fixture("chat_messages.json"))
+        assertTrue(messages.hasMore)
+        val msg = messages.messages.first()
+        assertEquals("qq-90001", msg.id)
+        assertEquals("Alice", msg.player_name)
+        assertEquals("/api/v1/chat/media/qq-90001/0", msg.allAttachments.first().url)
+        assertEquals("/api/v1/chat/media/qq-90001/0?variant=thumb", msg.allAttachments.first().thumbUrl)
+
+        val wikiCatalog = json.decodeFromString<WikiCatalogResponse>(fixture("wiki_catalog.json"))
+        assertEquals("IGNGmc", wikiCatalog.knowledgeBase?.slug)
+        assertEquals(2, wikiCatalog.pages.size)
+        assertEquals(10, wikiCatalog.pages.first().id)
+
+        val wikiPage = json.decodeFromString<WikiPageResponse>(fixture("wiki_page.json"))
+        assertEquals(11, wikiPage.page.id)
+        assertEquals("新手入门", wikiPage.page.title)
+        assertTrue(wikiPage.page.content.contains("新手入门"))
+    }
+
+    @Test
+    fun decodesVaultHistorianNodesAndTrafficV1Payloads() {
         val vaultRaw = """
             {
-              "success": true,
-              "available": true,
-              "total": 1,
-              "groups": [
+              "data": [
                 {
+                  "group_key": "fp-1",
                   "material": "minecraft:netherite_pickaxe",
-                  "chinese_name": "下界合金镐",
-                  "custom_name": "§b星辉镐",
+                  "material_name": "下界合金镐",
+                  "display_name": "§b星辉镐",
+                  "has_custom_name": true,
                   "total_amount": 2,
                   "entry_count": 2,
-                  "enchantments": {"efficiency": 5, "mending": 1},
-                  "lore": ["§7四周目纪念"]
+                  "enchantments": [{"id": "efficiency", "level": 5}],
+                  "enchantment_labels": ["效率 V", "经验修补"]
                 }
-              ]
+              ],
+              "pagination": {"page": 1, "page_size": 30, "total": 1, "total_pages": 1},
+              "meta": {"available": true, "truncated": false, "scanned": 2}
             }
         """.trimIndent()
         val vault = json.decodeFromString<VaultItemsResponse>(vaultRaw)
+        assertTrue(vault.available)
         assertEquals("§b星辉镐", vault.groups.first().title)
-        assertEquals(5, vault.groups.first().enchantments["efficiency"])
-
-        val statsRaw = """
-            {
-              "success": true,
-              "summary": {"playTimeSeconds": 7200, "blocksMined": 4096, "mobKills": 128},
-              "topMined": [{"key": "minecraft:stone", "label": "石头", "value": 2048}]
-            }
-        """.trimIndent()
-        val stats = json.decodeFromString<VanillaStatsResponse>(statsRaw)
-        assertEquals(7200L, stats.summary.playTimeSeconds)
-        assertEquals("石头", stats.topMined.first().label)
-
-        val medalRaw = """
-            {
-              "success": true,
-              "activeMedals": [{"id": 1, "medalId": 9, "name": "开拓者", "account": "Steve"}],
-              "customMedals": [{"account": "Steve", "customName": "红石学徒", "canEdit": true}]
-            }
-        """.trimIndent()
-        val medals = json.decodeFromString<MedalProfileDto>(medalRaw)
-        assertEquals(1, medals.allActiveMedals.size)
-        assertEquals("Steve", medals.customMedals.first().ownerName)
-
-        val chatRaw = """
-            {
-              "messages": [
-                {
-                  "id": "qq-1",
-                  "source": "qq",
-                  "player_name": "Alex",
-                  "content": "截图来了",
-                  "has_forward": true,
-                  "media": [{"index": 0, "url": "/api/media/qq-1/0"}]
-                }
-              ],
-              "hasMore": true
-            }
-        """.trimIndent()
-        val chat = json.decodeFromString<ChatLogsResponse>(chatRaw)
-        assertTrue(chat.hasMore)
-        assertEquals(1, chat.messages.first().allAttachments.size)
+        assertEquals(2, vault.groups.first().enchantmentLabels.size)
 
         val historianRaw = """
             {
-              "servers": [{"server_id": 7, "server_name": "明净界"}],
-              "items": [{"id": "rep-1", "server_id": 7, "period_kind": "weekly", "period_start": "2026-11-16", "status": "succeeded"}]
+              "role": "superadmin",
+              "servers": [{"server_id": "srv_3", "server_name": "生存服"}],
+              "items": [{"report_id": "rep-1", "server_id": "srv_3", "period_type": "weekly", "period_start": "2026-11-16", "status": "succeeded"}]
             }
         """.trimIndent()
         val historian = json.decodeFromString<HistorianListResponse>(historianRaw)
-        assertEquals("明净界", historian.servers.first().server_name)
+        assertEquals("生存服", historian.servers.first().serverName)
         assertEquals("rep-1", historian.items.first().id)
+
+        val nodesRaw = """
+            {
+              "role": "superadmin",
+              "generated_at": "2026-11-22T12:00:00Z",
+              "servers": [
+                {
+                  "server_id": "srv_3",
+                  "numeric_server_id": 3,
+                  "server_name": "生存服",
+                  "status": {"overall": "healthy", "liveness": "online", "performance": "healthy", "network": "healthy"},
+                  "performance": {"tps": 19.9, "online_players": 12}
+                }
+              ]
+            }
+        """.trimIndent()
+        val nodes = json.decodeFromString<AdminCurrentNodesResponse>(nodesRaw)
+        assertEquals(1, nodes.servers.size)
+        assertEquals(19.9, nodes.servers.first().performance?.tps ?: 0.0, 0.001)
 
         val trafficRaw = """
             {
-              "bucketSeconds": 1800,
-              "totals": {"tx": 1048576, "rx": 2097152, "total": 3145728},
-              "topIps": [{"ip": "198.51.100.10", "tx": 1000, "rx": 2000, "total": 3000}]
+              "role": "superadmin",
+              "bucket_seconds": 1800,
+              "source": "backend",
+              "source_label": "后端流量",
+              "totals": {"tx_bytes": 1048576, "rx_bytes": 2097152, "total_bytes": 3145728},
+              "top_ips": [{"ip": "198.51.100.10", "tx_bytes": 1000, "rx_bytes": 2000, "total_bytes": 3000}]
             }
         """.trimIndent()
         val traffic = json.decodeFromString<TrafficAdminResponse>(trafficRaw)

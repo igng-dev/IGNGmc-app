@@ -1,0 +1,33 @@
+{
+  "data": [
+    {
+      "id": "tk_2048",
+      "title": "误封申诉",
+      "ticket_type": "appeal",
+      "ticket_status": "open",
+      "relation": "created",
+      "server_scope": "specific",
+      "server_id": "srv_3",
+      "server_name": "生存服",
+      "targets": [
+        {
+          "mc_username": "Alice_CN",
+          "mc_uuid": "4d9a2b0e-1111-2222-3333-444455556666"
+        }
+      ],
+      "last_message_at": "2026-11-22T12:00:00Z",
+      "created_at": "2026-11-22T12:00:00Z",
+      "updated_at": "2026-11-22T12:00:00Z",
+      "can_view": true,
+      "can_reply": true,
+      "can_manage": true,
+      "etag": "\"tk-2048-977a98f2\""
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 20,
+    "total": 1,
+    "total_pages": 1
+  }
+}

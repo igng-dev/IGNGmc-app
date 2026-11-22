@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-22T12:00:00Z",
+  "knowledge_base": {
+    "id": 1,
+    "slug": "IGNGmc",
+    "name": "IGNG Minecraft 百科",
+    "description": "服务器玩法与指南",
+    "root_page": {
+      "id": 10,
+      "slug": "",
+      "title": "欢迎来到 IGNG",
+      "format": "markdown",
+      "current_version": 3,
+      "updated_at": "2026-11-22T12:00:00Z",
+      "path": "IGNGmc"
+    }
+  },
+  "nodes": [
+    {
+      "id": 2,
+      "parent_id": null,
+      "node_type": "page",
+      "slug": "getting-started",
+      "title": "新手入门",
+      "sort_order": 1,
+      "updated_at": "2026-11-22T12:00:00Z",
+      "path": "IGNGmc/getting-started",
+      "page": {
+        "id": 11,
+        "slug": "getting-started",
+        "title": "新手入门",
+        "format": "markdown",
+        "current_version": 2,
+        "updated_at": "2026-11-22T12:00:00Z",
+        "path": "IGNGmc/getting-started"
+      },
+      "children": []
+    }
+  ]
+}

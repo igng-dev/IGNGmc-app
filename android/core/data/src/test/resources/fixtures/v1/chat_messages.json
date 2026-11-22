@@ -1,0 +1,38 @@
+{
+  "messages": [
+    {
+      "id": "qq-90001",
+      "source": "qq",
+      "platform": "qq",
+      "server_id": null,
+      "group_id": "123456789",
+      "sender_id": "10001",
+      "sender_name": "Alice",
+      "sender_avatar": "https://q1.qlogo.cn/g?b=qq&nk=10001&s=100",
+      "is_bot": false,
+      "is_recalled": false,
+      "persona_label": null,
+      "content": "晚上一起打龙吗",
+      "reply_to": null,
+      "attachments": [
+        {
+          "index": 0,
+          "kind": "image",
+          "name": "dragon.png",
+          "url": "/api/v1/chat/media/qq-90001/0",
+          "thumb_url": "/api/v1/chat/media/qq-90001/0?variant=thumb",
+          "mime_type": "image/png",
+          "size_bytes": 102400,
+          "width": null,
+          "height": null,
+          "external_url": null
+        }
+      ],
+      "forward_summary": null,
+      "has_forward": false,
+      "created_at": "2026-11-22T12:00:00Z"
+    }
+  ],
+  "has_more": true,
+  "focused_id": null
+}

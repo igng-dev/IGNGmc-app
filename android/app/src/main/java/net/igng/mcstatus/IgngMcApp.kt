@@ -97,6 +97,7 @@ fun IgngMcApp(
     val activeAccount by container.activeAccount.collectAsState()
     val accounts by container.accounts.collectAsState()
     val dailyExp by container.dailyExp.collectAsState()
+    val bootstrap by container.bootstrap.collectAsState()
     val incomingIntent by incomingIntentFlow.collectAsState()
 
     IgngTheme(
@@ -171,22 +172,27 @@ fun IgngMcApp(
             }
         }
 
-        // Refresh user metadata, admin role & settle daily login EXP whenever active account changes
-        LaunchedEffect(activeAccount?.userId, activeAccount?.token) {
-            val acc = activeAccount ?: return@LaunchedEffect
-            runCatching { container.authRepository.fetchMe(acc.token) }.onSuccess { me ->
-                val role = runCatching { container.authRepository.detectAdminRole(acc.token) }.getOrNull()
-                val updated = acc.copy(
-                    username = me.user.username,
-                    nickname = me.user.nickname,
-                    email = me.user.email,
-                    avatarUrl = me.user.avatar_url,
-                    expiresAt = me.expiresAt ?: acc.expiresAt,
-                    deviceName = me.deviceName ?: acc.deviceName,
-                    adminRoleWire = role?.name ?: acc.adminRoleWire,
-                )
-                if (updated != acc) {
-                    container.saveAndActivateAccount(updated)
+        // Refresh bootstrap state, user metadata, admin role & settle daily login EXP whenever active user changes
+        LaunchedEffect(activeAccount?.userId) {
+            val acc = activeAccount
+            if (acc == null) {
+                runCatching { container.authRepository.fetchBootstrap(token = null) }
+                    .onSuccess { container.updateBootstrap(it) }
+                return@LaunchedEffect
+            }
+            runCatching { container.authRepository.fetchBootstrap(acc.token) }.onSuccess { boot ->
+                container.updateBootstrap(boot)
+                val viewerUser = boot.viewer.user
+                if (boot.viewer.authenticated && viewerUser != null) {
+                    val updated = acc.copy(
+                        username = viewerUser.username.ifBlank { acc.username },
+                        nickname = viewerUser.nickname ?: acc.nickname,
+                        avatarUrl = viewerUser.avatarUrl ?: acc.avatarUrl,
+                        adminRoleWire = boot.viewer.adminRole ?: acc.adminRoleWire,
+                    )
+                    if (updated != acc) {
+                        container.saveAndActivateAccount(updated, resetDailyExp = false)
+                    }
                 }
             }
             val exp = container.authRepository.settleDailyLogin(acc.token)
@@ -431,7 +437,7 @@ fun IgngMcApp(
                         PermissionsScreen(container.playerRepository) { navController.popBackStack() }
                     }
                     composable<AppRoute.LoginActivity> {
-                        LoginActivityScreen(container.playerRepository) { navController.popBackStack() }
+                        LoginActivityScreen(bootstrap = bootstrap) { navController.popBackStack() }
                     }
 
                     composable<AppRoute.Tickets> {

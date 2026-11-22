@@ -55,7 +55,6 @@ import net.igng.mcstatus.core.data.PermissionInsightsResponse
 import net.igng.mcstatus.core.data.PersonalPerfectResponse
 import net.igng.mcstatus.core.data.PlayerFakePlayerDto
 import net.igng.mcstatus.core.data.PlayerLandDto
-import net.igng.mcstatus.core.data.PlayerLoginRecordDto
 import net.igng.mcstatus.core.data.PlayerPermissionsResponse
 import net.igng.mcstatus.core.data.PlayerRepository
 import net.igng.mcstatus.core.data.PlayerTeleportDto
@@ -88,11 +87,11 @@ import net.igng.mcstatus.core.designsystem.IgngTheme
 import net.igng.mcstatus.core.designsystem.IgngTile
 import net.igng.mcstatus.core.designsystem.IgngTopBar
 import net.igng.mcstatus.core.designsystem.igngStaggeredReveal
+import net.igng.mcstatus.core.model.BootstrapResponse
 import net.igng.mcstatus.core.model.CustomMedalValidator
 import net.igng.mcstatus.core.model.IgngFormatters
 import net.igng.mcstatus.core.model.MedalValidationResult
 import net.igng.mcstatus.core.model.SiteEndpoints
-import net.igng.mcstatus.core.model.asBooleanFlag
 
 // ==================== 1. Characters ====================
 
@@ -170,12 +169,12 @@ fun CharactersScreen(
                 }
                 else -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     itemsIndexed(accounts, key = { _, a -> a.id }) { idx, acc ->
-                        val isPub = acc.isPublic || acc.is_public.asBooleanFlag()
+                        val isPub = acc.isPublic
                         IgngTile(modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(acc.resolvedName, style = IgngTheme.type.sectionTitle, color = colors.textPrimary)
-                                    Text("绑定于 ${IgngFormatters.formatIsoDateTime(acc.createdAt ?: acc.created_at, short = true)}", style = IgngTheme.type.caption, color = colors.textSecondary)
+                                    Text("绑定于 ${IgngFormatters.formatIsoDateTime(acc.createdAt, short = true)}", style = IgngTheme.type.caption, color = colors.textSecondary)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(if (isPub) "公开" else "私密", style = IgngTheme.type.caption, color = colors.textSecondary)
@@ -246,23 +245,38 @@ fun CharactersScreen(
                 IgngLoadingBlock(compact = true)
             } else {
                 val info = detailData
-                Text("最近进服：${IgngFormatters.formatEpochMillis(info?.authme?.lastlogin)}", style = IgngTheme.type.body, color = colors.textPrimary)
-                info?.authme?.ip?.let { Text("最近 IP：$it", style = IgngTheme.type.mono, color = colors.textSecondary) }
+                info?.account?.boundAt?.let {
+                    Text("绑定时间：${IgngFormatters.formatIsoDateTime(it)}", style = IgngTheme.type.body, color = colors.textPrimary)
+                }
+                info?.account?.uuid?.let {
+                    Text("UUID：$it", style = IgngTheme.type.mono, color = colors.textSecondary)
+                }
+                val lastLoginAt = info?.account?.lastLoginAt
+                if (info?.loginHistoryAvailable == true && lastLoginAt != null) {
+                    Text("最近进服：${IgngFormatters.formatIsoDateTime(lastLoginAt)}", style = IgngTheme.type.body, color = colors.textPrimary)
+                } else {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "服务端已按隐私合规策略暂停游戏登录与处罚历史归因查询。",
+                        style = IgngTheme.type.caption,
+                        color = colors.textSecondary,
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 val ban = info?.activePenalty?.ban
                 val mute = info?.activePenalty?.mute
                 if (ban != null) IgngBadge("生效封禁：${ban.reason ?: "无说明"}", tone = IgngBadgeTone.Danger)
                 if (mute != null) IgngBadge("生效禁言：${mute.reason ?: "无说明"}", tone = IgngBadgeTone.Warning)
-                if (ban == null && mute == null) IgngBadge("当前无生效处罚", tone = IgngBadgeTone.Success)
-                Spacer(Modifier.height(12.dp))
+                if (ban == null && mute == null && info?.penaltyHistoryAvailable == true) {
+                    IgngBadge("当前无生效处罚", tone = IgngBadgeTone.Success)
+                }
                 val history = info?.history.orEmpty()
-                if (history.isEmpty()) {
-                    Text("没有历史处罚记录。", style = IgngTheme.type.caption, color = colors.textSecondary)
-                } else {
+                if (history.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
                     history.take(10).forEach { p ->
                         IgngTile(soft = true, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), contentPadding = PaddingValues(10.dp)) {
                             Text("${p.type ?: "处罚"} · ${p.reason ?: "无理由"}", style = IgngTheme.type.bodyMedium, color = colors.textPrimary)
-                            Text("操作人：${p.banned_by_name ?: "系统"} · ${IgngFormatters.formatEpochMillis(p.time)}", style = IgngTheme.type.caption, color = colors.textSecondary)
+                            Text("操作人：${p.adminName ?: "系统"} · ${IgngFormatters.formatIsoDateTime(p.startedAt)}", style = IgngTheme.type.caption, color = colors.textSecondary)
                         }
                     }
                 }
@@ -329,7 +343,7 @@ fun CharactersScreen(
                 scope.launch {
                     runCatching { playerRepository.unbindAccount(target.resolvedName) }
                         .onSuccess {
-                            feedback = it.message ?: "已解绑 ${target.resolvedName}"
+                            feedback = "已解绑 ${target.resolvedName}"
                             reload()
                         }
                         .onFailure { feedback = it.message }
@@ -378,7 +392,7 @@ fun VaultScreen(
         if (tab == VaultTab.ITEMS && selectedVaultId.isNotBlank()) {
             runCatching { playerRepository.fetchVaultItems(selectedVaultId, query) }
                 .onSuccess { itemsData = it }
-        } else if (tab == VaultTab.HISTORY) {
+        } else if (tab == VaultTab.HISTORY && selectedVaultId.isNotBlank()) {
             runCatching { playerRepository.fetchVaultHistory(selectedVaultId) }
                 .onSuccess { historyData = it }
         }
@@ -435,7 +449,7 @@ fun VaultScreen(
                             if (groups.isEmpty()) {
                                 item { IgngStateBlock(title = "仓库里还没有匹配的物品") }
                             } else {
-                                itemsIndexed(groups, key = { i, g -> "${g.material}:${g.custom_name}:$i" }) { idx, item ->
+                                itemsIndexed(groups, key = { i, g -> "${g.groupKey ?: g.material}:${g.displayName}:$i" }) { idx, item ->
                                     IgngInteractiveTile(
                                         onClick = { selectedItem = item },
                                         modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx),
@@ -447,10 +461,10 @@ fun VaultScreen(
                                             }
                                             IgngBadge("×${IgngFormatters.formatNumber(item.total_amount)}", tone = IgngBadgeTone.Accent)
                                         }
-                                        if (item.enchantments.isNotEmpty()) {
+                                        if (item.enchantmentLabels.isNotEmpty()) {
                                             Spacer(Modifier.height(6.dp))
                                             Text(
-                                                item.enchantments.entries.joinToString(" · ") { "${it.key} ${it.value}" },
+                                                item.enchantmentLabels.joinToString(" · "),
                                                 style = IgngTheme.type.badge,
                                                 color = colors.accent,
                                                 maxLines = 2,
@@ -477,7 +491,7 @@ fun VaultScreen(
                                         modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx),
                                     ) {
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text(op.chinese_name ?: op.material ?: op.kind, style = IgngTheme.type.cardTitle, color = colors.textPrimary)
+                                            Text(op.material ?: op.kind, style = IgngTheme.type.cardTitle, color = colors.textPrimary)
                                             IgngBadge(op.state, tone = if (op.state.equals("COMMITTED", true) || op.state.equals("COMPLETED", true)) IgngBadgeTone.Success else IgngBadgeTone.Neutral)
                                         }
                                         Spacer(Modifier.height(4.dp))
@@ -498,30 +512,22 @@ fun VaultScreen(
             title = item.title,
             subtitle = "${item.material} · 总数量 ${IgngFormatters.formatNumber(item.total_amount)}",
         ) {
-            if (item.enchantments.isNotEmpty()) {
+            if (item.enchantmentLabels.isNotEmpty()) {
                 Text("附魔属性", style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
                 Spacer(Modifier.height(6.dp))
-                item.enchantments.forEach { (k, v) ->
-                    Text("· $k Lv.$v", style = IgngTheme.type.body, color = colors.accent)
+                item.enchantmentLabels.forEach { lbl ->
+                    Text("· $lbl", style = IgngTheme.type.body, color = colors.accent)
                 }
                 Spacer(Modifier.height(10.dp))
             }
-            if (item.lore.isNotEmpty()) {
-                Text("物品说明（Lore）", style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
+            if (item.maxDamage != null && item.remainingDurability != null) {
+                Text("耐久：${item.remainingDurability} / ${item.maxDamage}", style = IgngTheme.type.caption, color = colors.textSecondary)
                 Spacer(Modifier.height(6.dp))
-                item.lore.forEach { line -> IgngMcFormattedText(line, style = IgngTheme.type.body) }
-                Spacer(Modifier.height(10.dp))
             }
-            if (item.entries.isNotEmpty()) {
-                Text("来源批次", style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
-                Spacer(Modifier.height(6.dp))
-                item.entries.take(8).forEach { e ->
-                    Text(
-                        "×${e.amount} · ${e.source_server ?: "未知服"} ${e.source_season ?: ""} · ${IgngFormatters.formatIsoDateTime(e.created_at, short = true)}",
-                        style = IgngTheme.type.caption,
-                        color = colors.textSecondary,
-                    )
-                }
+            Text("存放批次数：${item.entry_count}", style = IgngTheme.type.caption, color = colors.textSecondary)
+            item.latestAt?.let {
+                Spacer(Modifier.height(4.dp))
+                Text("最近入库：${IgngFormatters.formatIsoDateTime(it, short = true)}", style = IgngTheme.type.caption, color = colors.textMuted)
             }
         }
     }
@@ -759,44 +765,20 @@ fun MyFakePlayersScreen(playerRepository: PlayerRepository, onBack: () -> Unit) 
 }
 
 @Composable
-fun LoginActivityScreen(playerRepository: PlayerRepository, onBack: () -> Unit) {
-    val colors = IgngTheme.colors
-    var list by remember { mutableStateOf<List<PlayerLoginRecordDto>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        loading = true
-        runCatching { playerRepository.fetchLogins() }
-            .onSuccess { list = it }
-            .onFailure { error = it.message ?: "登录记录没有读到" }
-        loading = false
-    }
-
+fun LoginActivityScreen(bootstrap: BootstrapResponse?, onBack: () -> Unit) {
+    val feature = bootstrap?.features?.loginHistory
     IgngAmbientCanvas {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             IgngTopBar(title = "登录与活动", subtitle = "Minecraft 游戏内登录安全回溯", onBack = onBack)
-            when {
-                loading -> Box(Modifier.padding(16.dp)) { IgngSkeletonRows(4) }
-                error != null -> Box(Modifier.padding(16.dp)) { IgngStateBlock(title = "读取失败", description = error, isError = true) }
-                list.isEmpty() -> Box(Modifier.padding(16.dp)) { IgngStateBlock(title = "还没有登录记录") }
-                else -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    itemsIndexed(list, key = { _, r -> r.id }) { idx, rec ->
-                        val ok = rec.is_success.asBooleanFlag()
-                        IgngTile(modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("${rec.player_name ?: "角色"} · ${rec.server_name ?: "服务器 ${rec.server_id}"}", style = IgngTheme.type.cardTitle, color = colors.textPrimary)
-                                IgngBadge(if (ok) "成功" else "失败", tone = if (ok) IgngBadgeTone.Success else IgngBadgeTone.Danger)
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "${IgngFormatters.formatIsoDateTime(rec.recorded_at)} · IP ${rec.ip_address ?: "—"} · ${IgngFormatters.worldLabel(rec.world)}",
-                                style = IgngTheme.type.caption,
-                                color = colors.textSecondary,
-                            )
-                        }
-                    }
-                }
+            Box(Modifier.padding(16.dp)) {
+                IgngStateBlock(
+                    title = if (feature?.available == true) "还没有登录记录" else "游戏登录历史暂未开放",
+                    description = if (feature?.available == true) {
+                        "当前绑定的角色暂无进服登录记录。"
+                    } else {
+                        "服务端已按隐私与身份归因治理策略暂停游戏内登录流水查询，待新归因表上线后将在 /api/v1/mc/bootstrap 自动启用。"
+                    },
+                )
             }
         }
     }
@@ -1048,34 +1030,50 @@ fun PersonalPerfectScreen(playerRepository: PlayerRepository, onBack: () -> Unit
                 data != null -> {
                     val info = data!!
                     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        itemsIndexed(info.accounts, key = { _, a -> a.username }) { idx, acc ->
-                            IgngTile(modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx)) {
+                        item {
+                            IgngTile(modifier = Modifier.fillMaxWidth()) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(acc.username, style = IgngTheme.type.sectionTitle, color = colors.textPrimary)
+                                    Text("认证状态", style = IgngTheme.type.sectionTitle, color = colors.textPrimary)
                                     IgngBadge(
-                                        text = if (acc.isPerfect) (acc.memberNoLabel ?: "完美之人") else "未认证",
-                                        tone = if (acc.isPerfect) IgngBadgeTone.Warning else IgngBadgeTone.Neutral,
+                                        text = if (info.hasPerfect) "完美之人" else "未认证",
+                                        tone = if (info.hasPerfect) IgngBadgeTone.Warning else IgngBadgeTone.Neutral,
                                     )
                                 }
-                                acc.qualificationLabel?.let {
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(it, style = IgngTheme.type.caption, color = colors.textSecondary)
+                                if (info.holders.isNotEmpty()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    info.holders.forEach { h ->
+                                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(h.username, style = IgngTheme.type.bodyMedium, color = colors.textPrimary)
+                                            IgngBadge(
+                                                text = if (h.isHolder) "已生效" else "未生效",
+                                                tone = if (h.isHolder) IgngBadgeTone.Success else IgngBadgeTone.Neutral,
+                                            )
+                                        }
+                                    }
                                 }
-                                if (acc.landUsage.isNotEmpty()) {
-                                    Spacer(Modifier.height(10.dp))
-                                    acc.landUsage.forEach { usage ->
-                                        val limit = usage.limit ?: 0
-                                        val ratio = if (limit > 0) (usage.count.toFloat() / limit).coerceIn(0f, 1f) else 0f
-                                        Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                Text("${usage.serverName} 领地额度", style = IgngTheme.type.caption, color = colors.textSecondary)
-                                                Text(if (limit > 0) "${usage.count} / $limit" else "${usage.count}", style = IgngTheme.type.mono, color = colors.textPrimary)
-                                            }
-                                            if (limit > 0) {
-                                                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(999.dp)).background(colors.tileSoft)) {
-                                                    Box(Modifier.fillMaxWidth(ratio).height(6.dp).clip(RoundedCornerShape(999.dp)).background(colors.accent))
-                                                }
-                                            }
+                            }
+                        }
+                        if (info.benefits.isNotEmpty()) {
+                            item { IgngSectionHeader(title = "权益与额度") }
+                            itemsIndexed(info.benefits, key = { i, b -> "${b.key}:$i" }) { idx, b ->
+                                IgngTile(modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx)) {
+                                    Text(b.title, style = IgngTheme.type.cardTitle, color = colors.textPrimary)
+                                    if (b.description.isNotBlank()) {
+                                        Spacer(Modifier.height(3.dp))
+                                        Text(b.description, style = IgngTheme.type.caption, color = colors.textSecondary)
+                                    }
+                                    val limit = b.limit ?: 0
+                                    val used = b.used ?: 0
+                                    if (limit > 0) {
+                                        Spacer(Modifier.height(8.dp))
+                                        val ratio = (used.toFloat() / limit).coerceIn(0f, 1f)
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("当前用量", style = IgngTheme.type.caption, color = colors.textSecondary)
+                                            Text("$used / $limit", style = IgngTheme.type.mono, color = colors.textPrimary)
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(999.dp)).background(colors.tileSoft)) {
+                                            Box(Modifier.fillMaxWidth(ratio).height(6.dp).clip(RoundedCornerShape(999.dp)).background(colors.accent))
                                         }
                                     }
                                 }
@@ -1124,45 +1122,50 @@ fun PermissionsScreen(playerRepository: PlayerRepository, onBack: () -> Unit) {
                     if (accounts.isEmpty()) {
                         item { IgngStateBlock(title = "还没有权限记录") }
                     } else {
-                        items(accounts, key = { it.id }) { acc ->
+                        items(accounts, key = { it.key }) { acc ->
                             IgngTile(modifier = Modifier.fillMaxWidth()) {
-                                Text(acc.username, style = IgngTheme.type.sectionTitle, color = colors.textPrimary)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(acc.username, style = IgngTheme.type.sectionTitle, color = colors.textPrimary)
+                                    acc.serverName?.let { IgngBadge(it) }
+                                }
                                 Spacer(Modifier.height(8.dp))
-                                acc.identities.forEach { id ->
-                                    id.groups.forEach { grp ->
-                                        var expanded by remember { mutableStateOf(false) }
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(IgngTheme.radii.sm)
-                                                .background(colors.tileSoft)
-                                                .clickable { expanded = !expanded }
-                                                .padding(10.dp),
-                                        ) {
-                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                Text(grp.displayName ?: grp.name, style = IgngTheme.type.bodyMedium.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
-                                                IgngBadge("${grp.permissions.size} 节点")
-                                            }
-                                            AnimatedVisibility(visible = expanded) {
-                                                Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    grp.permissions.take(30).forEach { node ->
-                                                        Text(
-                                                            "${if (node.value) "+" else "-"} ${node.nodeKey}",
-                                                            style = IgngTheme.type.mono,
-                                                            color = if (node.value) colors.success else colors.danger,
-                                                        )
-                                                    }
+                                acc.groups.forEach { grp ->
+                                    var expanded by remember { mutableStateOf(false) }
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(IgngTheme.radii.sm)
+                                            .background(colors.tileSoft)
+                                            .clickable { expanded = !expanded }
+                                            .padding(10.dp),
+                                    ) {
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(grp.displayName ?: grp.name, style = IgngTheme.type.bodyMedium.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
+                                            IgngBadge("${grp.permissions.size} 节点")
+                                        }
+                                        AnimatedVisibility(visible = expanded) {
+                                            Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                grp.permissions.take(30).forEach { node ->
+                                                    Text(
+                                                        "${if (node.value) "+" else "-"} ${node.nodeKey}",
+                                                        style = IgngTheme.type.mono,
+                                                        color = if (node.value) colors.success else colors.danger,
+                                                    )
                                                 }
                                             }
                                         }
-                                        Spacer(Modifier.height(6.dp))
                                     }
-                                    if (id.independentPermissions.isNotEmpty()) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Text("独立节点", style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold), color = colors.textSecondary)
-                                        id.independentPermissions.forEach { node ->
-                                            Text("${if (node.value) "+" else "-"} ${node.nodeKey}", style = IgngTheme.type.mono, color = colors.textPrimary)
-                                        }
+                                    Spacer(Modifier.height(6.dp))
+                                }
+                                if (acc.independentPermissions.isNotEmpty()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("独立节点", style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold), color = colors.textSecondary)
+                                    acc.independentPermissions.forEach { node ->
+                                        Text(
+                                            "${if (node.value) "+" else "-"} ${node.nodeKey}",
+                                            style = IgngTheme.type.mono,
+                                            color = if (node.value) colors.textPrimary else colors.danger,
+                                        )
                                     }
                                 }
                             }
@@ -1170,26 +1173,26 @@ fun PermissionsScreen(playerRepository: PlayerRepository, onBack: () -> Unit) {
                     }
                 }
                 else -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    val expList = insights?.expiring.orEmpty()
-                    val changes = insights?.recentChanges.orEmpty()
+                    val expList = insights?.accounts.orEmpty().flatMap { acc -> acc.expiring.map { acc.username to it } }
+                    val changes = insights?.accounts.orEmpty().flatMap { acc -> acc.history.map { acc.username to it } }
                     if (expList.isEmpty() && changes.isEmpty()) {
                         item { IgngStateBlock(title = "当前没有即将到期的临时权限或变更动态") }
                     } else {
                         if (expList.isNotEmpty()) {
                             item { IgngSectionHeader(title = "即将到期节点") }
-                            items(expList, key = { "${it.id}:${it.nodeKey}" }) { node ->
+                            itemsIndexed(expList, key = { i, (user, item) -> "$user:${item.id}:$i" }) { _, (user, node) ->
                                 IgngTile(modifier = Modifier.fillMaxWidth()) {
-                                    Text(node.nodeKey, style = IgngTheme.type.mono, color = colors.textPrimary)
-                                    Text("到期：${IgngFormatters.formatIsoDateTime(node.expiresAt)}", style = IgngTheme.type.caption, color = colors.warning)
+                                    Text(node.displayName ?: node.label, style = IgngTheme.type.mono, color = colors.textPrimary)
+                                    Text("$user · ${node.contextLabel} · 到期 ${IgngFormatters.formatIsoDateTime(node.expiresAt)}", style = IgngTheme.type.caption, color = colors.warning)
                                 }
                             }
                         }
                         if (changes.isNotEmpty()) {
                             item { IgngSectionHeader(title = "近期权限动态") }
-                            itemsIndexed(changes) { _, ch ->
+                            itemsIndexed(changes, key = { i, (user, ch) -> "$user:${ch.id}:$i" }) { _, (user, ch) ->
                                 IgngTile(modifier = Modifier.fillMaxWidth()) {
-                                    Text("${ch.action} · ${ch.permission}", style = IgngTheme.type.mono, color = colors.textPrimary)
-                                    Text("${ch.target} · ${IgngFormatters.formatIsoDateTime(ch.timestamp, short = true)}", style = IgngTheme.type.caption, color = colors.textSecondary)
+                                    Text(ch.action, style = IgngTheme.type.mono, color = colors.textPrimary)
+                                    Text("$user · ${IgngFormatters.formatIsoDateTime(ch.recordedAt, short = true)}", style = IgngTheme.type.caption, color = colors.textSecondary)
                                 }
                             }
                         }

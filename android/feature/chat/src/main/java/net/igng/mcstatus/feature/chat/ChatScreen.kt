@@ -126,7 +126,7 @@ fun ChatScreen(
             }
             val beforeId = if (reset) null else messages.lastOrNull()?.id
             val resp = chatRepository.fetchMessages(
-                source = if (mode == ChatMode.QQ) "qq" else "mc",
+                source = if (mode == ChatMode.QQ) "qq" else "server",
                 serverId = if (mode == ChatMode.MC) selectedServerId ?: src.servers.firstOrNull()?.id else null,
                 groupId = if (mode == ChatMode.QQ) selectedGroupId ?: src.qqGroups.firstOrNull()?.id else null,
                 query = query,
@@ -151,7 +151,7 @@ fun ChatScreen(
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             IgngTopBar(
                 title = "聊天与交流",
-                subtitle = "来自 chat.igng.net 实时存档",
+                subtitle = "经由 www.igng.net/api/v1 实时存档",
                 actions = {
                     if (mode != ChatMode.SOCIAL) {
                         IgngButton(
@@ -435,19 +435,22 @@ private fun ChatMessageCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 attachments.forEach { att ->
-                    val resolved = endpoints.resolveChatMediaUrl(
-                        att.previewUrl ?: att.url ?: "/api/chatlogs/media/${message.id}/${att.index}",
+                    val thumbUrl = endpoints.resolveApiMediaUrl(
+                        att.thumbUrl ?: att.url ?: "/api/v1/chat/media/${message.id}/${att.index}?variant=thumb",
                     )
-                    if (resolved != null) {
+                    val fullUrl = endpoints.resolveApiMediaUrl(
+                        att.url ?: att.thumbUrl ?: "/api/v1/chat/media/${message.id}/${att.index}",
+                    )
+                    if (thumbUrl != null) {
                         AsyncImage(
-                            model = resolved,
+                            model = thumbUrl,
                             contentDescription = "图片附件",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(92.dp)
                                 .clip(IgngTheme.radii.sm)
                                 .border(1.dp, colors.line, IgngTheme.radii.sm)
-                                .clickable { onPreviewImage(resolved) },
+                                .clickable { onPreviewImage(fullUrl ?: thumbUrl) },
                         )
                     }
                 }

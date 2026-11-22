@@ -1,0 +1,59 @@
+{
+  "data": [
+    {
+      "land_id": "land_4091",
+      "server_id": "srv_3",
+      "server_name": "生存服",
+      "land_name": "alice_home",
+      "owner_name": "Alice_CN",
+      "owner_uuid": "4d9a2b0e-1111-2222-3333-444455556666",
+      "owner_uuid_source": "player_identities",
+      "plugin_type": "normal",
+      "world": "world",
+      "x": 32,
+      "y": 64,
+      "z": 32,
+      "bounds": {
+        "min_x": 0,
+        "min_y": 0,
+        "min_z": 0,
+        "max_x": 63,
+        "max_y": 320,
+        "max_z": 63
+      },
+      "size": {
+        "width": 64,
+        "height": 321,
+        "length": 64
+      },
+      "guest_flags": {
+        "entry": true
+      },
+      "environment_flags": {
+        "pvp": false
+      },
+      "groups": [],
+      "members": [
+        {
+          "uuid": "4d9a2b0e-1111-2222-3333-444455556666",
+          "name": "Alice_CN",
+          "group_name": "主人",
+          "permissions": {
+            "build": true
+          }
+        }
+      ],
+      "viewer_role": "owner",
+      "can_edit": true,
+      "is_public": true,
+      "description": "海边小屋",
+      "updated_at": "2026-11-22T12:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 30,
+    "total": 1,
+    "total_pages": 1
+  }
+}

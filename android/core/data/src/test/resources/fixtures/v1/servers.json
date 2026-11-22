@@ -1,0 +1,191 @@
+{
+  "families": [
+    {
+      "slug": "survival",
+      "name": "IGNG 生存服",
+      "label": "原版纯净",
+      "theme_key": "survival",
+      "tagline": "自由建造与协作",
+      "description": "长期稳定的原版生存社区服",
+      "kind": "seasonal",
+      "sort_order": 1,
+      "home_featured": true,
+      "primary_season": {
+        "slug": "survival-s6",
+        "family_slug": "survival",
+        "family_name": "IGNG 生存服",
+        "label": "第六周目",
+        "ordinal": 6,
+        "state": "live",
+        "kind": "mainline",
+        "is_primary": true,
+        "started_at": "2026-05-01",
+        "ended_at": null,
+        "archive_id": null,
+        "map_relay_key": "survival-s6",
+        "map_mode": "live",
+        "has_map": true,
+        "modpack": null,
+        "server_id": "srv_3",
+        "numeric_server_id": 3,
+        "address": "mc.igng.net",
+        "version": "1.21.4",
+        "core": "Paper",
+        "platform": "Java",
+        "seed": null,
+        "status_text": "运行中",
+        "notice": null,
+        "badge": "主力服",
+        "eyebrow": "SEASON 6",
+        "description": "第六周目原版生电与建筑共存",
+        "card_description": "第六周目原版生存",
+        "background_key": "survival",
+        "highlights": [
+          "领地保护",
+          "跨服保险箱"
+        ],
+        "rules": [
+          "禁止外挂"
+        ],
+        "plugins": [
+          "OneWayVault",
+          "LuckPerms"
+        ],
+        "worlds": [
+          "world",
+          "world_nether",
+          "world_the_end"
+        ],
+        "command": "/server survival",
+        "cpu_model": "AMD EPYC",
+        "cpu_spec": "8 vCPU",
+        "memory_spec": "32 GB",
+        "disk_spec": "500 GB NVMe",
+        "updated_at": "2026-11-22T12:00:00Z"
+      },
+      "seasons": [
+        {
+          "slug": "survival-s6",
+          "family_slug": "survival",
+          "family_name": "IGNG 生存服",
+          "label": "第六周目",
+          "ordinal": 6,
+          "state": "live",
+          "kind": "mainline",
+          "is_primary": true,
+          "started_at": "2026-05-01",
+          "ended_at": null,
+          "archive_id": null,
+          "map_relay_key": "survival-s6",
+          "map_mode": "live",
+          "has_map": true,
+          "modpack": null,
+          "server_id": "srv_3",
+          "numeric_server_id": 3,
+          "address": "mc.igng.net",
+          "version": "1.21.4",
+          "core": "Paper",
+          "platform": "Java",
+          "seed": null,
+          "status_text": "运行中",
+          "notice": null,
+          "badge": "主力服",
+          "eyebrow": "SEASON 6",
+          "description": "第六周目原版生电与建筑共存",
+          "card_description": "第六周目原版生存",
+          "background_key": "survival",
+          "highlights": [
+            "领地保护",
+            "跨服保险箱"
+          ],
+          "rules": [
+            "禁止外挂"
+          ],
+          "plugins": [
+            "OneWayVault",
+            "LuckPerms"
+          ],
+          "worlds": [
+            "world",
+            "world_nether",
+            "world_the_end"
+          ],
+          "command": "/server survival",
+          "cpu_model": "AMD EPYC",
+          "cpu_spec": "8 vCPU",
+          "memory_spec": "32 GB",
+          "disk_spec": "500 GB NVMe",
+          "updated_at": "2026-11-22T12:00:00Z"
+        }
+      ],
+      "alive_seasons": [
+        {
+          "slug": "survival-s6",
+          "family_slug": "survival",
+          "family_name": "IGNG 生存服",
+          "label": "第六周目",
+          "ordinal": 6,
+          "state": "live",
+          "kind": "mainline",
+          "is_primary": true,
+          "started_at": "2026-05-01",
+          "ended_at": null,
+          "archive_id": null,
+          "map_relay_key": "survival-s6",
+          "map_mode": "live",
+          "has_map": true,
+          "modpack": null,
+          "server_id": "srv_3",
+          "numeric_server_id": 3,
+          "address": "mc.igng.net",
+          "version": "1.21.4",
+          "core": "Paper",
+          "platform": "Java",
+          "seed": null,
+          "status_text": "运行中",
+          "notice": null,
+          "badge": "主力服",
+          "eyebrow": "SEASON 6",
+          "description": "第六周目原版生电与建筑共存",
+          "card_description": "第六周目原版生存",
+          "background_key": "survival",
+          "highlights": [
+            "领地保护",
+            "跨服保险箱"
+          ],
+          "rules": [
+            "禁止外挂"
+          ],
+          "plugins": [
+            "OneWayVault",
+            "LuckPerms"
+          ],
+          "worlds": [
+            "world",
+            "world_nether",
+            "world_the_end"
+          ],
+          "command": "/server survival",
+          "cpu_model": "AMD EPYC",
+          "cpu_spec": "8 vCPU",
+          "memory_spec": "32 GB",
+          "disk_spec": "500 GB NVMe",
+          "updated_at": "2026-11-22T12:00:00Z"
+        }
+      ],
+      "updated_at": "2026-11-22T12:00:00Z"
+    }
+  ],
+  "servers": [
+    {
+      "server_id": "srv_3",
+      "numeric_id": 3,
+      "server_name": "IGNG 生存服 · 第六周目",
+      "slug": "survival-s6",
+      "family_slug": "survival",
+      "address": "mc.igng.net",
+      "version": "1.21.4",
+      "is_enabled": true
+    }
+  ]
+}

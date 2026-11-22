@@ -105,8 +105,8 @@ fun SettingsScreen(
                                     Text(
                                         text = buildString {
                                             append("@${activeAccount.username}")
-                                            activeAccount.expiresAt?.let {
-                                                append(" · 有效期至 ")
+                                            (activeAccount.refreshExpiresAt ?: activeAccount.expiresAt)?.let {
+                                                append(" · 会话有效期至 ")
                                                 append(IgngFormatters.formatIsoDateTime(it, short = true))
                                             }
                                         },
@@ -233,7 +233,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "服务拓扑：mc.igng.net · dash.igng.net · sso.igng.net · chat.igng.net · docs.igng.net",
+                            "统一网关：www.igng.net/api/v1 · OAuth 2.1 PKCE：sso.igng.net",
                             style = IgngTheme.type.mono,
                             color = colors.textMuted,
                         )

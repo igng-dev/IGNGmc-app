@@ -1,5 +1,6 @@
 package net.igng.mcstatus.core.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 enum class ThemeMode(val id: String, val label: String) {
@@ -65,8 +66,14 @@ data class SavedAccount(
     val nickname: String? = null,
     val email: String? = null,
     val avatarUrl: String? = null,
+    /** OAuth 2.1 short-lived access_token (1h). */
     val token: String,
     val expiresAt: String? = null,
+    /** OAuth 2.1 single-use rotating refresh_token (30d). Null for legacy upgraded sessions. */
+    val refreshToken: String? = null,
+    val refreshExpiresAt: String? = null,
+    val scope: String? = null,
+    val sessionId: String? = null,
     val deviceName: String? = null,
     val adminRoleWire: String? = null,
 ) {
@@ -82,8 +89,74 @@ data class DailyExpStatus(
     val loggedIn: Boolean = false,
     val awarded: Boolean = false,
     val exp: Int? = null,
+    val baseExp: Int? = null,
     val level: Int? = null,
     val multiplier: Double? = null,
+    val period: String? = null,
+)
+
+@Serializable
+data class BootstrapUrlsDto(
+    @SerialName("api_base_url") val apiBaseUrl: String = "https://www.igng.net",
+    @SerialName("sso_base_url") val ssoBaseUrl: String = "https://sso.igng.net",
+    @SerialName("mc_web_url") val mcWebUrl: String = "https://mc.igng.net",
+    @SerialName("dash_web_url") val dashWebUrl: String = "https://dash.igng.net",
+    @SerialName("wiki_web_url") val wikiWebUrl: String = "https://wiki.igng.net",
+    @SerialName("map_web_url") val mapWebUrl: String = "https://mc.igng.net/map",
+)
+
+@Serializable
+data class FeatureAvailabilityDto(
+    val available: Boolean = false,
+    val reason: String? = null,
+)
+
+@Serializable
+data class BootstrapFeaturesDto(
+    @SerialName("login_history") val loginHistory: FeatureAvailabilityDto = FeatureAvailabilityDto(),
+    @SerialName("penalty_history") val penaltyHistory: FeatureAvailabilityDto = FeatureAvailabilityDto(),
+    @SerialName("mc_account_bind_web_only") val mcAccountBindWebOnly: Boolean = true,
+    @SerialName("wiki_default_kb") val wikiDefaultKb: String = "IGNGmc",
+)
+
+@Serializable
+data class BootstrapUserDto(
+    val id: String = "",
+    @SerialName("numeric_id") val numericId: Int = 0,
+    val username: String = "",
+    val nickname: String? = null,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+) {
+    val resolvedNumericId: Int
+        get() = if (numericId > 0) numericId else (V1Id.parseNumeric(id) ?: 0)
+}
+
+@Serializable
+data class BootstrapBoundAccountDto(
+    @SerialName("account_id") val accountId: String = "",
+    val username: String = "",
+    val uuid: String? = null,
+    @SerialName("is_public") val isPublic: Boolean = false,
+)
+
+@Serializable
+data class BootstrapViewerDto(
+    val authenticated: Boolean = false,
+    val user: BootstrapUserDto? = null,
+    @SerialName("admin_role") val adminRole: String? = null,
+    @SerialName("is_mc_admin") val isMcAdmin: Boolean = false,
+    @SerialName("is_elevated_admin") val isElevatedAdmin: Boolean = false,
+    @SerialName("bound_mc_accounts") val boundMcAccounts: List<BootstrapBoundAccountDto> = emptyList(),
+)
+
+@Serializable
+data class BootstrapResponse(
+    @SerialName("api_version") val apiVersion: String = "1.12",
+    @SerialName("contract_version") val contractVersion: String = "1.12.0",
+    @SerialName("server_time") val serverTime: String? = null,
+    val urls: BootstrapUrlsDto = BootstrapUrlsDto(),
+    val features: BootstrapFeaturesDto = BootstrapFeaturesDto(),
+    val viewer: BootstrapViewerDto = BootstrapViewerDto(),
 )
 
 data class AppPreferences(

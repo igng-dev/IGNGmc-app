@@ -14,8 +14,18 @@ Worktree: `~/项目/.wt/IGNGmc应用/<slug>`
 ## 项目范围
 
 - Kotlin + Jetpack Compose 的 Android 应用，工程入口在 `android/`。
-- 对接 IGNG 的服务器状态与工单服务。工单的字段、权限、可见性、状态规则**以服务端接口为准**（同级目录 `~/项目/IGNG/IGNG站点`），不得在客户端复制或改写业务规则。
+- 对接 IGNG 统一客户端网关（`https://www.igng.net/api/v1/**`）与官方 OAuth 2.1 PKCE 认证中心（`https://sso.igng.net`）。工单、角色、领地、仓库、聊天与百科的字段、权限、可见性、状态规则**以服务端 v1 契约为准**（同级目录 `~/项目/IGNG/IGNG站点/docs/internal-api-v1.md` 与 `contracts/client-api-v1.openapi.json`），不得在客户端复制或改写业务规则。
 - 默认服务地址写在公开构建配置里；不得把测试地址、内网地址、账号或凭据写进源码。
+
+## Client API v1 契约与跨仓联动规则（强制）
+
+- **唯一 API 网关原则**：客户端**只能**调用 `https://www.igng.net/api/v1/**`（及 `https://sso.igng.net/oauth/authorize`、`POST /api/oauth/token`）；**禁止**在 `Repositories.kt` 或任何网络层直接请求 `mc.igng.net/api/**`、`dash.igng.net/api/**`、`chat.igng.net/api/**`、`wiki.igng.net/api/**` 或 `sso.igng.net/api/mobile/**`（WebView 地图与外链浏览器跳转除外）。
+- **认证与请求头契约**：
+  - 所有 `/api/v1/**` 请求必须携带 `X-Client-Id: igng_mc_android`、`X-Client-Version`、`X-Device-Id`、`User-Agent: IGNGmc-Android/<version>`；所有 `/api/v1/**` `POST` 请求必须携带 `Idempotency-Key`；`PATCH /api/v1/tickets/{ticket_id}` 必须携带 `If-Match`。
+  - Bearer 令牌仅注入 `www.igng.net` 与 `sso.igng.net`；`refresh_token` 单次使用且轮换，并发 401 刷新必须经过 `SingleFlightTokenRefresher` 互斥锁，禁止并发重放旧 `refresh_token`。
+- **契约先行与黄金样本同步**：
+  - 每次需要新增或调整服务端接口时，必须先在 `IGNG站点` 更新 `docs/internal-api-v1.md`、生成 `contracts/client-api-v1.openapi.json` 与 `contracts/fixtures/igngmc-v1/*.json`，再把最新黄金样本同步到 `android/core/data/src/test/resources/fixtures/v1/` 并保证 `DtoDeserializationTest` 全部通过。
+  - PR 描述涉及接口变更时，必须在正文中标注对应的 `igng-dev/igng-sites` PR 链接与契约版本号。
 
 ## 开始工作前
 

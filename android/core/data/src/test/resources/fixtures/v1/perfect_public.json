@@ -1,0 +1,42 @@
+{
+  "available": true,
+  "group": "perfect",
+  "wiki_url": "https://wiki.igng.net/IGNGmc/perfect",
+  "total_count": 5,
+  "public_count": 1,
+  "hidden_count": 4,
+  "benefits": [
+    {
+      "key": "home_slots",
+      "title": "额外传送点",
+      "description": "增加可用家数量",
+      "limit": 20,
+      "servers": [
+        {
+          "server_id": "srv_3",
+          "server_name": "生存服"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    "遵守社区规范"
+  ],
+  "criteria": [
+    "累计活跃满 100 小时"
+  ],
+  "apply_steps": [
+    "提交工单申请"
+  ],
+  "principles": [
+    "公平透明"
+  ],
+  "public_members": [
+    {
+      "username": "Alice_CN",
+      "user_id": "usr_1024",
+      "numeric_user_id": 1024,
+      "joined_at": "2026-06-01T00:00:00Z"
+    }
+  ]
+}

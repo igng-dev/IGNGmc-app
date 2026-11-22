@@ -1,0 +1,50 @@
+{
+  "generated_at": "2026-11-22T12:00:00Z",
+  "range": {
+    "start_at": "2026-11-21T12:00:00Z",
+    "end_at": "2026-11-22T12:00:00Z"
+  },
+  "bucket_minutes": 15,
+  "collector": {
+    "id": 1,
+    "name": "bj-probe",
+    "label": "中国大陆 · 北京",
+    "last_seen_at": "2026-11-22T12:00:00Z",
+    "age_seconds": 12,
+    "freshness": "fresh",
+    "version": "2.1.0"
+  },
+  "servers": {
+    "srv_3": {
+      "server_id": "srv_3",
+      "numeric_server_id": 3,
+      "latencies": [
+        {
+          "timestamp_at": "2026-11-22T12:00:00Z",
+          "avg_latency_ms": 24.5,
+          "packet_loss_pct": 0,
+          "sample_count": 15
+        }
+      ],
+      "performance": [
+        {
+          "recorded_at": "2026-11-22T12:00:00Z",
+          "avg_tps": 19.95,
+          "avg_mspt": 14.2,
+          "cpu_usage": 32.5,
+          "memory_usage_mb": 12400,
+          "metrics_status": "healthy",
+          "resource_status": "healthy"
+        }
+      ],
+      "status_grid": [
+        {
+          "bucket_at": "2026-11-22T12:00:00Z",
+          "status": "online",
+          "avg_latency_ms": 24.5,
+          "packet_loss_pct": 0
+        }
+      ]
+    }
+  }
+}

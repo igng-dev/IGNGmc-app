@@ -1,0 +1,46 @@
+{
+  "api_version": "1.12",
+  "contract_version": "1.12.0",
+  "server_time": "2026-11-22T12:00:00Z",
+  "urls": {
+    "api_base_url": "https://www.igng.net",
+    "sso_base_url": "https://sso.igng.net",
+    "mc_web_url": "https://mc.igng.net",
+    "dash_web_url": "https://dash.igng.net",
+    "wiki_web_url": "https://wiki.igng.net",
+    "map_web_url": "https://mc.igng.net/map"
+  },
+  "features": {
+    "login_history": {
+      "available": false,
+      "reason": "identity_attribution_disabled"
+    },
+    "penalty_history": {
+      "available": false,
+      "reason": "identity_attribution_disabled"
+    },
+    "mc_account_bind_web_only": true,
+    "wiki_default_kb": "IGNGmc"
+  },
+  "viewer": {
+    "authenticated": true,
+    "user": {
+      "id": "usr_1024",
+      "numeric_id": 1024,
+      "username": "alice",
+      "nickname": "Alice",
+      "avatar_url": "https://img.igng.net/avatars/a.webp"
+    },
+    "admin_role": "SUPERADMIN",
+    "is_mc_admin": true,
+    "is_elevated_admin": true,
+    "bound_mc_accounts": [
+      {
+        "account_id": "mca_128",
+        "username": "Alice_CN",
+        "uuid": "4d9a2b0e-1111-2222-3333-444455556666",
+        "is_public": true
+      }
+    ]
+  }
+}

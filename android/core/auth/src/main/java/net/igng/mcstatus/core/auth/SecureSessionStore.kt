@@ -6,6 +6,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
+import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -14,17 +15,27 @@ import net.igng.mcstatus.core.model.SavedAccount
 
 /**
  * Hardware-backed Android Keystore AES-256-GCM encrypted multi-account session vault.
- * Preserves compatibility with v1.0.10 key alias and SharedPreferences file so upgrading
- * users retain existing saved sessions seamlessly.
+ * Preserves compatibility with v1.0.10 / v2.0.0 key alias and SharedPreferences file so upgrading
+ * users transition cleanly to OAuth 2.1 rotating access_token + refresh_token storage.
  */
 class SecureSessionStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
+    fun getOrCreateDeviceId(): String {
+        val existing = preferences.getString(KEY_DEVICE_ID, null)?.trim()
+        if (!existing.isNullOrBlank() && DEVICE_ID_REGEX.matches(existing)) {
+            return existing
+        }
+        val generated = "dev_" + UUID.randomUUID().toString().replace("-", "").lowercase().take(24)
+        preferences.edit().putString(KEY_DEVICE_ID, generated).apply()
+        return generated
+    }
+
     fun save(account: SavedAccount) {
         val key = accountKey(account.userId)
         val ids = accountIds().toMutableSet().apply { add(account.userId.toString()) }
-        preferences.edit()
+        val editor = preferences.edit()
             .putStringSet(KEY_ACCOUNT_IDS, ids)
             .putString(KEY_ACTIVE_USER_ID, account.userId.toString())
             .putString("${key}_token", encrypt(account.token))
@@ -33,9 +44,18 @@ class SecureSessionStore(context: Context) {
             .putString("${key}_email", account.email.orEmpty())
             .putString("${key}_avatar", account.avatarUrl.orEmpty())
             .putString("${key}_expires", account.expiresAt.orEmpty())
+            .putString("${key}_refresh_expires", account.refreshExpiresAt.orEmpty())
+            .putString("${key}_scope", account.scope.orEmpty())
+            .putString("${key}_session_id", account.sessionId.orEmpty())
             .putString("${key}_device", account.deviceName.orEmpty())
             .putString("${key}_role", account.adminRoleWire.orEmpty())
-            .apply()
+        val refresh = account.refreshToken?.takeIf { it.isNotBlank() }
+        if (refresh != null) {
+            editor.putString("${key}_refresh", encrypt(refresh))
+        } else {
+            editor.remove("${key}_refresh")
+        }
+        editor.apply()
     }
 
     fun activeAccount(): SavedAccount? = activeUserId()?.let(::account)
@@ -61,6 +81,10 @@ class SecureSessionStore(context: Context) {
         val ids = accountIds().toMutableSet().apply { remove(userId.toString()) }
         val editor = preferences.edit()
             .remove("${key}_token")
+            .remove("${key}_refresh")
+            .remove("${key}_refresh_expires")
+            .remove("${key}_scope")
+            .remove("${key}_session_id")
             .remove("${key}_username")
             .remove("${key}_nickname")
             .remove("${key}_email")
@@ -79,6 +103,10 @@ class SecureSessionStore(context: Context) {
         val key = accountKey(userId)
         val encrypted = preferences.getString("${key}_token", null) ?: return null
         val token = runCatching { decrypt(encrypted) }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        val encryptedRefresh = preferences.getString("${key}_refresh", null)
+        val refreshToken = encryptedRefresh?.let { enc ->
+            runCatching { decrypt(enc) }.getOrNull()?.takeIf { it.isNotBlank() }
+        }
         return SavedAccount(
             userId = userId,
             username = preferences.getString("${key}_username", "").orEmpty(),
@@ -87,6 +115,10 @@ class SecureSessionStore(context: Context) {
             avatarUrl = preferences.getString("${key}_avatar", "")?.ifBlank { null },
             token = token,
             expiresAt = preferences.getString("${key}_expires", "")?.ifBlank { null },
+            refreshToken = refreshToken,
+            refreshExpiresAt = preferences.getString("${key}_refresh_expires", "")?.ifBlank { null },
+            scope = preferences.getString("${key}_scope", "")?.ifBlank { null },
+            sessionId = preferences.getString("${key}_session_id", "")?.ifBlank { null },
             deviceName = preferences.getString("${key}_device", "")?.ifBlank { null },
             adminRoleWire = preferences.getString("${key}_role", "")?.ifBlank { null },
         )
@@ -135,5 +167,7 @@ class SecureSessionStore(context: Context) {
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val KEY_ACCOUNT_IDS = "account_ids"
         const val KEY_ACTIVE_USER_ID = "active_user_id"
+        const val KEY_DEVICE_ID = "v1_device_id"
+        val DEVICE_ID_REGEX = Regex("^[a-z0-9_-]{8,64}$")
     }
 }

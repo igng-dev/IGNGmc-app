@@ -141,7 +141,7 @@ fun StatusWallScreen(
                         }
 
                         itemsIndexed(servers, key = { _, s -> s.id }) { idx, server ->
-                            val series = historyResponse?.data?.get(server.id.toString())
+                            val series = historyResponse?.seriesFor(server.id)
                             ServerStatusCard(
                                 server = server,
                                 series = series,
@@ -156,7 +156,7 @@ fun StatusWallScreen(
     }
 
     inspectedServer?.let { server ->
-        val series = historyResponse?.data?.get(server.id.toString())
+        val series = historyResponse?.seriesFor(server.id)
         ServerDetailBottomSheet(
             server = server,
             series = series,
@@ -253,7 +253,7 @@ private fun ServerStatusCard(
         }
 
         val buckets = remember(series) {
-            series?.statusGrid?.buckets.orEmpty().map { b ->
+            series?.statusGrid.orEmpty().map { b ->
                 val level = when (b.status.lowercase()) {
                     "healthy", "online", "ok" -> HealthBucketLevel.Healthy
                     "degraded", "warn", "warning", "stale" -> HealthBucketLevel.Degraded
@@ -361,14 +361,37 @@ private fun ServerDetailBottomSheet(
                     }
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                IgngSectionHeader(title = "在线玩家数")
-                IgngLineChart(
-                    points = playerPoints,
-                    lineColor = colors.success,
-                    valueFormatter = { "${it.toInt()} 人" },
-                    minY = 0.0,
-                )
+            if (playerPoints.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IgngSectionHeader(title = "在线玩家数")
+                    IgngLineChart(
+                        points = playerPoints,
+                        lineColor = colors.success,
+                        valueFormatter = { "${it.toInt()} 人" },
+                        minY = 0.0,
+                    )
+                }
+            } else {
+                val cpuPoints = remember(series) {
+                    series?.performance.orEmpty().mapNotNull { p ->
+                        p.cpu_usage?.let {
+                            IgngChartPoint(
+                                label = IgngFormatters.formatIsoDateTime(p.recorded_at, short = true),
+                                value = it,
+                                detail = p.memory_usage_mb?.let { m -> "内存 ${m.toInt()} MB" }.orEmpty(),
+                            )
+                        }
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IgngSectionHeader(title = "CPU 负载")
+                    IgngLineChart(
+                        points = cpuPoints,
+                        lineColor = colors.success,
+                        valueFormatter = { "${IgngFormatters.formatDecimal(it, 1)}%" },
+                        minY = 0.0,
+                    )
+                }
             }
         }
     }

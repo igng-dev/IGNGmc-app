@@ -1,0 +1,56 @@
+{
+  "available": true,
+  "accounts": [
+    "Alice_CN"
+  ],
+  "overview": {
+    "play_time_seconds": 36000,
+    "play_time_formatted": "10 小时",
+    "blocks_mined": 12345,
+    "items_crafted": 2400,
+    "mob_kills": 512,
+    "player_kills": 2,
+    "deaths": 14,
+    "distance_cm": 9800000,
+    "distance_formatted": "98.0 km",
+    "server_count": 1,
+    "last_synced_at": "2026-11-22T12:00:00Z"
+  },
+  "server_breakdown": [
+    {
+      "server_id": "srv_3",
+      "numeric_server_id": 3,
+      "server_name": "生存服 S6",
+      "play_time_seconds": 36000,
+      "play_time_formatted": "10 小时",
+      "blocks_mined": 12345,
+      "mob_kills": 512,
+      "deaths": 14,
+      "last_synced_at": "2026-11-22T12:00:00Z"
+    }
+  ],
+  "highlights": [
+    {
+      "category": "mined",
+      "key": "minecraft:stone",
+      "label": "石头",
+      "value": 4200,
+      "formatted": "4,200"
+    }
+  ],
+  "categories": [
+    {
+      "id": "mined",
+      "label": "挖掘方块",
+      "total": 12345,
+      "items": [
+        {
+          "key": "minecraft:stone",
+          "label": "石头",
+          "value": 4200,
+          "formatted": "4,200"
+        }
+      ]
+    }
+  ]
+}

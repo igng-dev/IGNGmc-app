@@ -5,13 +5,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
+import java.time.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import net.igng.mcstatus.core.model.BootstrapResponse
 import net.igng.mcstatus.core.model.DailyExpStatus
 import net.igng.mcstatus.core.model.McAdminRole
 import net.igng.mcstatus.core.model.SavedAccount
@@ -30,31 +30,24 @@ data class OAuthTokenUser(
 
 @Serializable
 data class OAuthTokenResponse(
-    @SerialName("session_token") val sessionToken: String? = null,
+    @SerialName("access_token") val accessToken: String? = null,
+    @SerialName("token_type") val tokenType: String? = null,
+    @SerialName("expires_in") val expiresIn: Long? = null,
+    @SerialName("refresh_token") val refreshToken: String? = null,
+    @SerialName("refresh_expires_at") val refreshExpiresAt: String? = null,
+    val scope: String? = null,
     @SerialName("session_id") val sessionId: String? = null,
-    @SerialName("session_expires_at") val sessionExpiresAt: String? = null,
     val user: OAuthTokenUser? = null,
 )
 
 @Serializable
-data class MobileMeResponse(
-    val success: Boolean = false,
-    val sessionId: String? = null,
-    val deviceName: String? = null,
-    val createdAt: String? = null,
-    val lastUsedAt: String? = null,
-    val expiresAt: String? = null,
-    val user: OAuthTokenUser,
-)
-
-@Serializable
-private data class DailyLoginWire(
-    val ok: Boolean = false,
-    val loggedIn: Boolean = false,
+private data class V1DailyLoginWire(
     val awarded: Boolean = false,
     val exp: Int? = null,
-    val level: Int? = null,
+    @SerialName("base_exp") val baseExp: Int? = null,
     val multiplier: Double? = null,
+    val level: Int? = null,
+    val period: String? = null,
 )
 
 class OAuthPendingStore(context: Context) {
@@ -100,6 +93,7 @@ class AuthRepository(
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("client_id", CLIENT_ID)
             .appendQueryParameter("redirect_uri", REDIRECT_URI)
+            .appendQueryParameter("scope", DEFAULT_SCOPES)
             .appendQueryParameter("state", pkce.state)
             .appendQueryParameter("code_challenge", pkce.challenge)
             .appendQueryParameter("code_challenge_method", "S256")
@@ -120,93 +114,109 @@ class AuthRepository(
         val response: OAuthTokenResponse = json.decodeFromString(
             apiClient.post("${endpoints.sso}/api/oauth/token", body.toString(), suppressAuthNotify = true),
         )
-        val token = response.sessionToken?.takeIf { it.isNotBlank() }
-            ?: error("授权交换未返回有效会话令牌")
+        val accessToken = response.accessToken?.takeIf { it.isNotBlank() }
+            ?: error("授权交换未返回有效访问令牌")
+        val refreshToken = response.refreshToken?.takeIf { it.isNotBlank() }
         val user = response.user ?: error("授权交换未返回用户信息")
-        val enriched = runCatching { fetchMe(token) }.getOrNull()
-        val adminRole = runCatching { detectAdminRole(token) }.getOrNull()
+        val expiresAt = response.expiresIn?.takeIf { it > 0 }?.let { Instant.now().plusSeconds(it).toString() }
+
+        val bootstrap = runCatching { fetchBootstrap(accessToken) }.getOrNull()
+        val viewerUser = bootstrap?.viewer?.user
+        val adminRole = McAdminRole.fromWire(bootstrap?.viewer?.adminRole)
+
         return SavedAccount(
-            userId = enriched?.user?.id ?: user.id,
-            username = enriched?.user?.username ?: user.username,
-            nickname = enriched?.user?.nickname ?: user.nickname,
-            email = enriched?.user?.email ?: user.email,
-            avatarUrl = enriched?.user?.avatar_url ?: user.avatar_url,
-            token = token,
-            expiresAt = enriched?.expiresAt ?: response.sessionExpiresAt,
-            deviceName = enriched?.deviceName ?: "IGNGmc Android",
+            userId = viewerUser?.resolvedNumericId?.takeIf { it > 0 } ?: user.id,
+            username = viewerUser?.username?.takeIf { it.isNotBlank() } ?: user.username,
+            nickname = viewerUser?.nickname ?: user.nickname,
+            email = user.email,
+            avatarUrl = viewerUser?.avatarUrl ?: user.avatar_url,
+            token = accessToken,
+            expiresAt = expiresAt,
+            refreshToken = refreshToken,
+            refreshExpiresAt = response.refreshExpiresAt,
+            scope = response.scope ?: DEFAULT_SCOPES,
+            sessionId = response.sessionId,
+            deviceName = "IGNGmc Android",
             adminRoleWire = adminRole?.name,
         )
     }
 
-    suspend fun fetchMe(token: String): MobileMeResponse =
+    /**
+     * Rotates the single-use OAuth 2.1 `refresh_token` at `sso.igng.net/api/oauth/token`.
+     * Returns null when no refresh token is stored (legacy upgrade) or when the server rejects it.
+     */
+    suspend fun refreshSession(account: SavedAccount): SavedAccount? {
+        val currentRefresh = account.refreshToken?.takeIf { it.isNotBlank() } ?: return null
+        val body = buildJsonObject {
+            put("grant_type", "refresh_token")
+            put("client_id", CLIENT_ID)
+            put("refresh_token", currentRefresh)
+        }
+        val response: OAuthTokenResponse = json.decodeFromString(
+            apiClient.post("${endpoints.sso}/api/oauth/token", body.toString(), suppressAuthNotify = true),
+        )
+        val newAccess = response.accessToken?.takeIf { it.isNotBlank() } ?: return null
+        val newRefresh = response.refreshToken?.takeIf { it.isNotBlank() } ?: return null
+        val expiresAt = response.expiresIn?.takeIf { it > 0 }?.let { Instant.now().plusSeconds(it).toString() }
+        return account.copy(
+            token = newAccess,
+            expiresAt = expiresAt ?: account.expiresAt,
+            refreshToken = newRefresh,
+            refreshExpiresAt = response.refreshExpiresAt ?: account.refreshExpiresAt,
+            scope = response.scope ?: account.scope,
+            sessionId = response.sessionId ?: account.sessionId,
+            username = response.user?.username?.takeIf { it.isNotBlank() } ?: account.username,
+            nickname = response.user?.nickname ?: account.nickname,
+            email = response.user?.email ?: account.email,
+        )
+    }
+
+    suspend fun fetchBootstrap(token: String? = null): BootstrapResponse =
         json.decodeFromString(
             apiClient.get(
-                url = "${endpoints.sso}/api/mobile/auth/me",
+                url = "${endpoints.api}/api/v1/mc/bootstrap",
                 tokenOverride = token,
-                suppressAuthNotify = true,
+                suppressAuthNotify = !token.isNullOrBlank(),
             ),
         )
 
     suspend fun logout(token: String) {
         apiClient.post(
-            url = "${endpoints.sso}/api/mobile/auth/logout",
+            url = "${endpoints.api}/api/v1/auth/logout",
             body = "{}",
             tokenOverride = token,
             suppressAuthNotify = true,
         )
     }
 
-    suspend fun fetchDashCryptoChallenge(token: String? = null): CryptoChallenge =
+    suspend fun fetchCryptoChallenge(token: String? = null): CryptoChallenge =
         json.decodeFromString(
             apiClient.get(
-                url = "${endpoints.dash}/api/auth/crypto",
+                url = "${endpoints.api}/api/v1/auth/crypto",
                 tokenOverride = token,
                 suppressAuthNotify = true,
             ),
         )
 
-    suspend fun settleDailyLogin(token: String): DailyExpStatus? = runCatching {
-        val wire: DailyLoginWire = json.decodeFromString(
+    suspend fun settleDailyLogin(token: String? = null): DailyExpStatus? = runCatching {
+        val wire: V1DailyLoginWire = json.decodeFromString(
             apiClient.post(
-                url = "${endpoints.dash}/api/daily-login",
+                url = "${endpoints.api}/api/v1/users/me/daily-login",
                 body = "{}",
                 tokenOverride = token,
                 suppressAuthNotify = true,
             ),
         )
         DailyExpStatus(
-            loggedIn = wire.loggedIn,
+            loggedIn = true,
             awarded = wire.awarded,
             exp = wire.exp,
+            baseExp = wire.baseExp,
             level = wire.level,
             multiplier = wire.multiplier,
+            period = wire.period,
         )
     }.getOrNull()
-
-    suspend fun detectAdminRole(token: String): McAdminRole? {
-        // Lightweight non-mutating check: admin/punishments/records returns { role: "ADMIN"|"TECHADMIN"|"SUPERADMIN" }
-        // when authorized and 403 otherwise.
-        val roleFromAdmin = runCatching {
-            val raw = apiClient.get(
-                url = "${endpoints.dash}/api/mc/admin/punishments/records?page=1&pageSize=1",
-                tokenOverride = token,
-                suppressAuthNotify = true,
-            )
-            val roleStr = json.parseToJsonElement(raw).jsonObject["role"]?.jsonPrimitive?.content
-            McAdminRole.fromWire(roleStr)
-        }.getOrNull()
-        if (roleFromAdmin != null) return roleFromAdmin
-
-        val hasTicketsAdmin = runCatching {
-            apiClient.get(
-                url = "${endpoints.dash}/api/mc/admin/tickets/overview",
-                tokenOverride = token,
-                suppressAuthNotify = true,
-            )
-            true
-        }.getOrDefault(false)
-        return if (hasTicketsAdmin) McAdminRole.ADMIN else null
-    }
 
     companion object {
         const val CLIENT_ID = "igng_mc_android"
@@ -214,6 +224,13 @@ class AuthRepository(
         const val CALLBACK_SCHEME = "igngmc"
         const val CALLBACK_HOST = "auth"
         const val CALLBACK_PATH = "/callback"
+        const val DEFAULT_SCOPES =
+            "profile:read profile:write devices:read devices:write " +
+                "mc:accounts:read mc:accounts:write mc:logins:read mc:permissions:read " +
+                "mc:lands:read mc:lands:write mc:vault:read mc:teleports:read " +
+                "mc:fake-players:read mc:medals:read mc:medals:write " +
+                "mc:tickets:read mc:tickets:write mc:media:write " +
+                "mc:status:read mc:search:read mc:chat:read mc:admin:read mc:admin:write"
     }
 }
 

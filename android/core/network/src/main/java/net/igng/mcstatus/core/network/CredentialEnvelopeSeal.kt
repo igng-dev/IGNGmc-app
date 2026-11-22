@@ -4,12 +4,14 @@ import java.security.KeyFactory
 import java.security.SecureRandom
 import java.security.spec.MGF1ParameterSpec
 import java.security.spec.X509EncodedKeySpec
+import java.time.Instant
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -20,12 +22,22 @@ data class CryptoChallenge(
     val nonce: String,
     val alg: String = "RSA-OAEP-256+A256GCM",
     val publicKey: String = "",
-    val public_key: String = "",
+    @SerialName("public_key") val publicKeySnake: String = "",
     val serverTime: Long? = null,
+    @SerialName("server_time") val serverTimeIso: String? = null,
     val ttlMs: Long? = null,
+    @SerialName("ttl_ms") val ttlMsSnake: Long? = null,
+    @SerialName("expires_at") val expiresAt: String? = null,
 ) {
     val resolvedPublicKey: String
-        get() = publicKey.ifBlank { public_key }
+        get() = publicKey.ifBlank { publicKeySnake }
+
+    val resolvedServerTimeMs: Long?
+        get() = serverTime?.takeIf { it > 0L }
+            ?: serverTimeIso?.takeIf { it.isNotBlank() }?.let { raw ->
+                raw.toLongOrNull()?.takeIf { it > 0L }
+                    ?: runCatching { Instant.parse(raw).toEpochMilli() }.getOrNull()
+            }
 }
 
 @Serializable
@@ -57,7 +69,7 @@ object CredentialEnvelopeSeal {
             "加密挑战参数无效，请重试。"
         }
 
-        val ts = challenge.serverTime?.takeIf { it > 0L } ?: fallbackNowMs
+        val ts = challenge.resolvedServerTimeMs ?: fallbackNowMs
         val payloadJson = Json.encodeToString(
             JsonObject.serializer(),
             JsonObject(fields.mapValues { (_, v) -> JsonPrimitive(v) }),
