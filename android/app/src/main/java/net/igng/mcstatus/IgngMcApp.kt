@@ -482,7 +482,12 @@ fun IgngMcApp(
                         PermissionsScreen(container.playerRepository) { navController.popBackStack() }
                     }
                     composable<AppRoute.LoginActivity> {
-                        LoginActivityScreen(bootstrap = bootstrap) { navController.popBackStack() }
+                        LoginActivityScreen(
+                            bootstrap = bootstrap,
+                            endpoints = container.endpoints,
+                            playerRepository = container.playerRepository,
+                            onBack = { navController.popBackStack() },
+                        )
                     }
 
                     composable<AppRoute.Tickets> {
