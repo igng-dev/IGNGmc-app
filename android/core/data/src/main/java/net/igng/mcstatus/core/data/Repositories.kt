@@ -165,6 +165,9 @@ class ChatRepository(
         atAll: Boolean = false,
         kind: String = "",
         beforeId: String? = null,
+        aroundId: String? = null,
+        start: String? = null,
+        end: String? = null,
         limit: Int = 80,
     ): ChatLogsResponse {
         val v1Source = if (source == "qq") "qq" else "server"
@@ -179,6 +182,9 @@ class ChatRepository(
                 if (v1Source == "qq" && atAll) addQueryParameter("at_all", "true")
                 if (v1Source == "qq" && kind.isNotBlank()) addQueryParameter("kind", kind)
                 if (!beforeId.isNullOrBlank()) addQueryParameter("before_id", beforeId)
+                if (!aroundId.isNullOrBlank()) addQueryParameter("around_id", aroundId)
+                if (!start.isNullOrBlank()) addQueryParameter("start", start)
+                if (!end.isNullOrBlank()) addQueryParameter("end", end)
             }
             .build().toString()
         return json.decodeFromString(api.get(url, allowAnonymousFallback = true))
@@ -186,6 +192,46 @@ class ChatRepository(
 
     suspend fun fetchForwardDetail(messageId: String): ChatForwardResponse =
         json.decodeFromString(api.get("${endpoints.api}/api/v1/chat/messages/${Uri.encode(messageId)}/forward", allowAnonymousFallback = true))
+
+    /**
+     * Downloads a binary chat attachment (audio/video/file) via the trusted OkHttpClient
+     * (attaching `X-Client-*` and Bearer token strictly for `www.igng.net`) into [cacheDir].
+     */
+    suspend fun downloadMediaToCache(
+        cacheDir: File,
+        cacheKey: String,
+        pathOrUrl: String,
+        extension: String = "bin",
+    ): File = withContext(Dispatchers.IO) {
+        val resolvedUrl = endpoints.resolveApiMediaUrl(pathOrUrl)
+            ?: throw IllegalArgumentException("媒体地址无效")
+        val mediaDir = File(cacheDir, "igng_chat_media").apply { mkdirs() }
+        val safeKey = cacheKey.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val safeExt = extension.lowercase().replace(Regex("[^a-z0-9]"), "").ifBlank { "bin" }
+        val target = File(mediaDir, "$safeKey.$safeExt")
+        if (target.exists() && target.length() > 0L) return@withContext target
+
+        val request = okhttp3.Request.Builder()
+            .url(resolvedUrl)
+            .header("Accept", "*/*")
+            .get()
+            .build()
+        api.okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("媒体读取失败（HTTP ${response.code}）")
+            }
+            val body = response.body ?: throw IllegalStateException("媒体响应为空")
+            val tmp = File(mediaDir, "$safeKey.$safeExt.tmp")
+            body.byteStream().use { input ->
+                tmp.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (!tmp.renameTo(target)) {
+                tmp.copyTo(target, overwrite = true)
+                tmp.delete()
+            }
+        }
+        target
+    }
 }
 
 class WikiRepository(

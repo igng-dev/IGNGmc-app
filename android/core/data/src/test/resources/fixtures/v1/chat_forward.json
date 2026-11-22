@@ -1,0 +1,48 @@
+{
+  "message_id": "qq-90001",
+  "title": "聊天记录",
+  "summary": "群聊的聊天记录",
+  "nodes": [
+    {
+      "sender_id": "10001",
+      "sender_name": "Alice",
+      "content": "准备好了吗",
+      "created_at": null
+    },
+    {
+      "sender_id": "10002",
+      "sender_name": "Bob",
+      "content": "带好鞘翅出发",
+      "created_at": null
+    }
+  ],
+  "structure": [
+    {
+      "type": "forward",
+      "part_index": 1,
+      "id": "fwd-1",
+      "nickname": "",
+      "summary": "群聊的聊天记录",
+      "child_count": 2,
+      "has_details": true,
+      "children": [
+        {
+          "sender_id": "10001",
+          "nickname": "Alice",
+          "content": "准备好了吗",
+          "created_at": null,
+          "attachments": [],
+          "children": []
+        },
+        {
+          "sender_id": "10002",
+          "nickname": "Bob",
+          "content": "带好鞘翅出发",
+          "created_at": null,
+          "attachments": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

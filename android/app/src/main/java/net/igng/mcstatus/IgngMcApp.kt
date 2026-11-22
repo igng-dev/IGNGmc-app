@@ -59,7 +59,8 @@ import net.igng.mcstatus.core.designsystem.IgngNavTabItem
 import net.igng.mcstatus.core.designsystem.IgngTheme
 import net.igng.mcstatus.core.model.AppPreferences
 import net.igng.mcstatus.feature.admin.AdminPocketConsoleScreen
-import net.igng.mcstatus.feature.chat.ChatScreen
+import net.igng.mcstatus.feature.chat.ChatConversationScreen
+import net.igng.mcstatus.feature.chat.ChatSessionListScreen
 import net.igng.mcstatus.feature.explore.CommunityHallScreen
 import net.igng.mcstatus.feature.explore.ExploreScreen
 import net.igng.mcstatus.feature.explore.GlobalSearchScreen
@@ -276,10 +277,55 @@ fun IgngMcApp(
                     }
 
                     composable<AppRoute.Chat> {
-                        ChatScreen(
+                        ChatSessionListScreen(
                             endpoints = container.endpoints,
                             chatRepository = container.chatRepository,
+                            activeAccount = activeAccount,
                             bottomPadding = bottomBarPadding,
+                            onSignIn = { startOAuth(forceLogin = false) },
+                            onOpenSession = { session ->
+                                navController.navigate(
+                                    AppRoute.ChatConversation(
+                                        source = session.apiSource,
+                                        targetId = session.targetId,
+                                        platform = session.platformKey,
+                                        isPrivate = session.isPrivate,
+                                        title = session.name,
+                                        avatarUrl = session.avatarUrl,
+                                        isAdminGroup = session.isAdminGroup,
+                                        isTechGroup = session.isTechGroup,
+                                        personaLabel = session.persona?.label,
+                                        personaDescription = session.persona?.description,
+                                    ),
+                                )
+                            },
+                        )
+                    }
+
+                    composable<AppRoute.ChatConversation> { entry ->
+                        val route = entry.toRoute<AppRoute.ChatConversation>()
+                        val boundMcUsernames = remember(bootstrap) {
+                            bootstrap?.viewer?.boundMcAccounts?.map { it.username }.orEmpty()
+                        }
+                        ChatConversationScreen(
+                            source = route.source,
+                            targetId = route.targetId,
+                            platform = route.platform,
+                            isPrivate = route.isPrivate,
+                            title = route.title,
+                            sessionAvatarUrl = route.avatarUrl,
+                            isAdminGroup = route.isAdminGroup,
+                            isTechGroup = route.isTechGroup,
+                            initialPersonaLabel = route.personaLabel,
+                            initialPersonaDescription = route.personaDescription,
+                            initialFocusMessageId = route.initialFocusMessageId,
+                            endpoints = container.endpoints,
+                            chatRepository = container.chatRepository,
+                            activeAccount = activeAccount,
+                            boundMcUsernames = boundMcUsernames,
+                            onBack = { navController.popBackStack() },
+                            onOpenPlayerPassport = { id -> navController.navigate(AppRoute.PlayerPassport(id)) },
+                            onOpenMcCharacter = { name -> navController.navigate(AppRoute.McCharacter(name)) },
                         )
                     }
 

@@ -20,6 +20,21 @@ sealed interface AppRoute {
     @Serializable data object PerfectRoster : AppRoute
     @Serializable data class WikiArticle(val pageId: Int) : AppRoute
 
+    // Chat conversation detail (hides bottom floating nav bar for full-screen reading)
+    @Serializable data class ChatConversation(
+        val source: String,
+        val targetId: String,
+        val platform: String,
+        val isPrivate: Boolean = false,
+        val title: String = "",
+        val avatarUrl: String? = null,
+        val isAdminGroup: Boolean = false,
+        val isTechGroup: Boolean = false,
+        val personaLabel: String? = null,
+        val personaDescription: String? = null,
+        val initialFocusMessageId: String? = null,
+    ) : AppRoute
+
     // Dash Player Center destinations
     @Serializable data object Characters : AppRoute
     @Serializable data object Vault : AppRoute

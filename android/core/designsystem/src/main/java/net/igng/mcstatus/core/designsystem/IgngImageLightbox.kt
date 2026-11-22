@@ -5,13 +5,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
@@ -48,9 +52,28 @@ fun IgngImageLightbox(
     title: String? = null,
     onDismiss: () -> Unit,
 ) {
-    var scale by remember(imageUrl) { mutableFloatStateOf(1f) }
-    var offset by remember(imageUrl) { mutableStateOf(Offset.Zero) }
-    var dragY by remember(imageUrl) { mutableFloatStateOf(0f) }
+    IgngImageLightbox(
+        imageUrls = listOf(imageUrl),
+        initialIndex = 0,
+        titles = listOf(title),
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * Multi-image gesture lightbox supporting horizontal swipe paging, pinch/double-tap zoom, and drag-to-dismiss.
+ */
+@Composable
+fun IgngImageLightbox(
+    imageUrls: List<String>,
+    initialIndex: Int = 0,
+    titles: List<String?> = emptyList(),
+    onDismiss: () -> Unit,
+) {
+    if (imageUrls.isEmpty()) return
+    val safeInitial = initialIndex.coerceIn(0, imageUrls.lastIndex)
+    val pagerState = rememberPagerState(initialPage = safeInitial) { imageUrls.size }
+    var dragY by remember { mutableFloatStateOf(0f) }
 
     val backdropAlpha by animateFloatAsState(
         targetValue = (1f - (abs(dragY) / 700f)).coerceIn(0.25f, 0.96f),
@@ -68,57 +91,30 @@ fun IgngImageLightbox(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = backdropAlpha))
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            if (scale > 1.2f) {
-                                scale = 1f
-                                offset = Offset.Zero
-                            } else {
-                                scale = 2.4f
-                            }
-                        },
-                        onTap = {
-                            if (scale <= 1.05f) onDismiss()
-                        },
-                    )
-                }
-                .pointerInput(scale) {
-                    if (scale <= 1.05f) {
-                        detectVerticalDragGestures(
-                            onDragEnd = {
-                                if (abs(dragY) > 180f) onDismiss() else dragY = 0f
-                            },
-                            onDragCancel = { dragY = 0f },
-                        ) { _, delta ->
-                            dragY += delta
-                        }
-                    } else {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            val nextScale = (scale * zoom).coerceIn(1f, 5f)
-                            scale = nextScale
-                            offset = if (nextScale <= 1.02f) Offset.Zero else offset + pan
-                        }
-                    }
-                },
+                .background(Color.Black.copy(alpha = backdropAlpha)),
             contentAlignment = Alignment.Center,
         ) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = title ?: "图片预览",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        val dismissScale = (1f - abs(dragY) / 1600f).coerceIn(0.8f, 1f)
-                        scaleX = scale * dismissScale
-                        scaleY = scale * dismissScale
-                        translationX = offset.x
-                        translationY = offset.y + dragY
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = imageUrls.size > 1,
+            ) { page ->
+                val url = imageUrls[page]
+                val caption = titles.getOrNull(page)
+                ZoomableLightboxPage(
+                    imageUrl = url,
+                    title = caption,
+                    dragY = dragY,
+                    onDragDelta = { dragY += it },
+                    onDragEnd = {
+                        if (abs(dragY) > 180f) onDismiss() else dragY = 0f
                     },
-            )
+                    onDragCancel = { dragY = 0f },
+                    onDismiss = onDismiss,
+                )
+            }
 
+            val currentTitle = titles.getOrNull(pagerState.currentPage)
             Row(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -126,10 +122,11 @@ fun IgngImageLightbox(
                     .statusBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (!title.isNullOrBlank()) {
+                if (!currentTitle.isNullOrBlank()) {
                     Text(
-                        text = title,
+                        text = currentTitle,
                         style = IgngTheme.type.bodyMedium,
                         color = Color.White,
                         maxLines = 1,
@@ -138,6 +135,20 @@ fun IgngImageLightbox(
                     )
                 } else {
                     Spacer(Modifier.weight(1f))
+                }
+                if (imageUrls.size > 1) {
+                    Box(
+                        modifier = Modifier
+                            .clip(IgngTheme.radii.pill)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                    ) {
+                        Text(
+                            text = "${pagerState.currentPage + 1} / ${imageUrls.size}",
+                            style = IgngTheme.type.badge,
+                            color = Color.White,
+                        )
+                    }
                 }
                 IconButton(
                     onClick = onDismiss,
@@ -152,6 +163,90 @@ fun IgngImageLightbox(
                     )
                 }
             }
+
+            if (imageUrls.size > 1) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 18.dp)
+                        .clip(IgngTheme.radii.pill)
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = "左右滑动切换 · 双击放大 · 下拉关闭",
+                        style = IgngTheme.type.badge,
+                        color = Color.White.copy(alpha = 0.85f),
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun ZoomableLightboxPage(
+    imageUrl: String,
+    title: String?,
+    dragY: Float,
+    onDragDelta: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var scale by remember(imageUrl) { mutableFloatStateOf(1f) }
+    var offset by remember(imageUrl) { mutableStateOf(Offset.Zero) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(imageUrl) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (scale > 1.2f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = 2.4f
+                        }
+                    },
+                    onTap = {
+                        if (scale <= 1.05f) onDismiss()
+                    },
+                )
+            }
+            .pointerInput(imageUrl, scale) {
+                if (scale <= 1.05f) {
+                    detectVerticalDragGestures(
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragCancel,
+                    ) { _, delta ->
+                        onDragDelta(delta)
+                    }
+                } else {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                        scale = nextScale
+                        offset = if (nextScale <= 1.02f) Offset.Zero else offset + pan
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = title ?: "图片预览",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val dismissScale = (1f - abs(dragY) / 1600f).coerceIn(0.8f, 1f)
+                    scaleX = scale * dismissScale
+                    scaleY = scale * dismissScale
+                    translationX = offset.x
+                    translationY = offset.y + dragY
+                },
+        )
     }
 }
