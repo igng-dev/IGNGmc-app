@@ -57,7 +57,7 @@ class LocalJsonCache(context: Context, folderName: String) {
 }
 
 /**
- * All API traffic in `ExploreRepository` hits the unified v1 gateway (`${endpoints.api}/api/v1/**`).
+ * All API traffic in `ExploreRepository` hits the unified v1 gateway (`${endpoints.api}/api/v1`).
  */
 class ExploreRepository(
     private val endpoints: SiteEndpoints,

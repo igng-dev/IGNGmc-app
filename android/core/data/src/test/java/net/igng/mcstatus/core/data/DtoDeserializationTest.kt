@@ -13,7 +13,7 @@ import org.junit.Test
 
 /**
  * Contract drift guard: deserializes EVERY golden JSON fixture exported directly from
- * `IGNG站点/contracts/fixtures/igngmc-v1/*.json` using the production Kotlin DTOs.
+ * `IGNG站点/contracts/fixtures/igngmc-v1/` using the production Kotlin DTOs.
  */
 class DtoDeserializationTest {
 
