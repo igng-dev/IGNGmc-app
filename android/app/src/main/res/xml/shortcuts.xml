@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="shortcut_status"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_status_short"
+        android:shortcutLongLabel="@string/shortcut_status_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="net.igng.mcstatus"
+            android:targetClass="net.igng.mcstatus.MainActivity">
+            <extra android:name="igng_shortcut_action" android:value="status" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_map"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_map_short"
+        android:shortcutLongLabel="@string/shortcut_map_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="net.igng.mcstatus"
+            android:targetClass="net.igng.mcstatus.MainActivity">
+            <extra android:name="igng_shortcut_action" android:value="map" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_chat"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_chat_short"
+        android:shortcutLongLabel="@string/shortcut_chat_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="net.igng.mcstatus"
+            android:targetClass="net.igng.mcstatus.MainActivity">
+            <extra android:name="igng_shortcut_action" android:value="chat" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_create_ticket"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_ticket_short"
+        android:shortcutLongLabel="@string/shortcut_ticket_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="net.igng.mcstatus"
+            android:targetClass="net.igng.mcstatus.MainActivity">
+            <extra android:name="igng_shortcut_action" android:value="create_ticket" />
+        </intent>
+    </shortcut>
+</shortcuts>

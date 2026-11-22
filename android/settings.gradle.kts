@@ -18,6 +18,20 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "IGNGMcStatus"
-include(":app")
-
+rootProject.name = "IGNGmc"
+include(
+    ":app",
+    ":core:model",
+    ":core:designsystem",
+    ":core:network",
+    ":core:auth",
+    ":core:data",
+    ":feature:explore",
+    ":feature:status",
+    ":feature:map",
+    ":feature:chat",
+    ":feature:wiki",
+    ":feature:player",
+    ":feature:ticket",
+    ":feature:admin",
+)
