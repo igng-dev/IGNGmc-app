@@ -251,8 +251,9 @@ fun CharactersScreen(
                 info?.account?.uuid?.let {
                     Text("UUID：$it", style = IgngTheme.type.mono, color = colors.textSecondary)
                 }
-                if (info?.loginHistoryAvailable == true && info.account?.lastLoginAt != null) {
-                    Text("最近进服：${IgngFormatters.formatIsoDateTime(info.account.lastLoginAt)}", style = IgngTheme.type.body, color = colors.textPrimary)
+                val lastLoginAt = info?.account?.lastLoginAt
+                if (info?.loginHistoryAvailable == true && lastLoginAt != null) {
+                    Text("最近进服：${IgngFormatters.formatIsoDateTime(lastLoginAt)}", style = IgngTheme.type.body, color = colors.textPrimary)
                 } else {
                     Spacer(Modifier.height(6.dp))
                     Text(
