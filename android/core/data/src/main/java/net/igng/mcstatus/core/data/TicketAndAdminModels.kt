@@ -1,5 +1,7 @@
 package net.igng.mcstatus.core.data
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.igng.mcstatus.core.model.V1Id
@@ -34,16 +36,23 @@ data class TicketActorDto(
     @SerialName("display_name") val displayName: String? = null,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class TicketAccessRule(
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     @SerialName("group_code") val groupCode: String = "mc.admin",
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     @SerialName("target_group_enabled") val targetGroupEnabled: Boolean = true,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class TicketAccessPolicy(
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val view: TicketAccessRule = TicketAccessRule("mc.admin", true),
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val participate: TicketAccessRule = TicketAccessRule("mc.admin", true),
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val manage: TicketAccessRule = TicketAccessRule("mc.admin", false),
 )
 

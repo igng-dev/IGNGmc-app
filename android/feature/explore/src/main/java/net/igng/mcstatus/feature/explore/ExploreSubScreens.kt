@@ -165,10 +165,14 @@ fun ServerFamilyDetailScreen(
                                 Text("· $rule", style = IgngTheme.type.caption, color = colors.textSecondary)
                             }
                         }
-                        if (season.hasMap || season.mapMode != "none" || season.state == "retired") {
+                        if (season.hasViewableMap) {
                             Spacer(Modifier.height(12.dp))
                             IgngButton(
-                                text = if (season.state == "retired") "查看历史快照地图" else "打开实时世界地图",
+                                text = when {
+                                    season.isSnapshotMap -> "查看历史快照地图"
+                                    season.isArchivedMap -> "打开归档交互地图"
+                                    else -> "打开实时世界地图"
+                                },
                                 onClick = { onOpenMap(family.slug, season.slug) },
                                 style = IgngButtonStyle.Secondary,
                                 icon = Icons.Rounded.Map,

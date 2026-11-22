@@ -37,6 +37,12 @@ class SessionExpiredNotifier {
     }
 }
 
+sealed interface TokenRefreshResult {
+    data class Refreshed(val accessToken: String) : TokenRefreshResult
+    data object Invalidated : TokenRefreshResult
+    data object TransientFailure : TokenRefreshResult
+}
+
 /**
  * Coordinates single-flight OAuth 2.1 refresh-token rotation across concurrent 401 responses.
  * Because `refresh_token` is single-use and replay revokes the entire token family, only the
@@ -45,22 +51,27 @@ class SessionExpiredNotifier {
  */
 class SingleFlightTokenRefresher(
     private val currentTokenProvider: () -> String?,
-    private val refreshBlock: suspend (failedAccessToken: String) -> String?,
+    private val isTokenInvalidated: (String) -> Boolean = { false },
+    private val refreshBlock: suspend (failedAccessToken: String) -> TokenRefreshResult,
 ) {
     private val mutex = Mutex()
 
-    suspend fun refreshIfNeeded(failedAccessToken: String): String? = mutex.withLock {
+    suspend fun refreshIfNeeded(failedAccessToken: String): TokenRefreshResult = mutex.withLock {
         val latest = currentTokenProvider()?.takeIf { it.isNotBlank() }
         if (latest != null && latest != failedAccessToken) {
-            return latest
+            return TokenRefreshResult.Refreshed(latest)
         }
-        refreshBlock(failedAccessToken)?.takeIf { it.isNotBlank() }
+        if (isTokenInvalidated(failedAccessToken)) {
+            return TokenRefreshResult.Invalidated
+        }
+        refreshBlock(failedAccessToken)
     }
 }
 
 object IgngHttpClientFactory {
     const val CLIENT_ID = "igng_mc_android"
     const val DEFAULT_CLIENT_VERSION = "2.1.0"
+    internal const val SKIP_AUTH_HEADER = "X-Igng-Internal-Skip-Auth"
 
     fun create(
         endpoints: SiteEndpoints,
@@ -80,7 +91,9 @@ object IgngHttpClientFactory {
             .addInterceptor { chain ->
                 val original = chain.request()
                 val host = original.url.host.lowercase()
+                val skipAuth = !original.header(SKIP_AUTH_HEADER).isNullOrBlank()
                 val builder = original.newBuilder()
+                    .removeHeader(SKIP_AUTH_HEADER)
                     .header("User-Agent", userAgent)
                     .header("Accept", original.header("Accept") ?: "application/json, image/*, */*;q=0.8")
                 if (host == apiHost) {
@@ -89,7 +102,7 @@ object IgngHttpClientFactory {
                         .header("X-Client-Version", clientVersion)
                         .header("X-Device-Id", deviceIdProvider())
                 }
-                if (original.header("Authorization").isNullOrBlank() && host in trustedHosts) {
+                if (!skipAuth && original.header("Authorization").isNullOrBlank() && host in trustedHosts) {
                     val token = tokenProvider()?.takeIf { it.isNotBlank() }
                     if (token != null) {
                         builder.header("Authorization", "Bearer $token")
@@ -106,11 +119,13 @@ class ApiClient(
     val json: Json = DefaultJson,
     private val sessionExpiredNotifier: SessionExpiredNotifier? = null,
     private val tokenRefresher: SingleFlightTokenRefresher? = null,
+    private val hasInvalidatedSession: () -> Boolean = { false },
 ) {
     suspend fun get(
         url: String,
         tokenOverride: String? = null,
         suppressAuthNotify: Boolean = false,
+        allowAnonymousFallback: Boolean = false,
     ): String = requestWithRetry(
         method = "GET",
         url = url,
@@ -118,6 +133,7 @@ class ApiClient(
         ifMatch = null,
         tokenOverride = tokenOverride,
         suppressAuthNotify = suppressAuthNotify,
+        allowAnonymousFallback = allowAnonymousFallback,
     )
 
     suspend fun post(
@@ -127,7 +143,7 @@ class ApiClient(
         suppressAuthNotify: Boolean = false,
         idempotencyKey: String? = null,
     ): String = executeWithAuthRefresh(
-        buildRequest = { override ->
+        buildRequest = { override, skipAuth ->
             buildJsonRequest(
                 method = "POST",
                 url = url,
@@ -135,6 +151,7 @@ class ApiClient(
                 ifMatch = null,
                 idempotencyKey = idempotencyKey ?: autoIdempotencyKey("POST", url),
                 tokenOverride = override,
+                skipAuth = skipAuth,
             )
         },
         tokenOverride = tokenOverride,
@@ -148,7 +165,7 @@ class ApiClient(
         tokenOverride: String? = null,
         suppressAuthNotify: Boolean = false,
     ): String = executeWithAuthRefresh(
-        buildRequest = { override ->
+        buildRequest = { override, skipAuth ->
             buildJsonRequest(
                 method = "PATCH",
                 url = url,
@@ -156,6 +173,7 @@ class ApiClient(
                 ifMatch = ifMatch,
                 idempotencyKey = null,
                 tokenOverride = override,
+                skipAuth = skipAuth,
             )
         },
         tokenOverride = tokenOverride,
@@ -167,7 +185,7 @@ class ApiClient(
         tokenOverride: String? = null,
         suppressAuthNotify: Boolean = false,
     ): String = executeWithAuthRefresh(
-        buildRequest = { override ->
+        buildRequest = { override, skipAuth ->
             buildJsonRequest(
                 method = "DELETE",
                 url = url,
@@ -175,6 +193,7 @@ class ApiClient(
                 ifMatch = null,
                 idempotencyKey = null,
                 tokenOverride = override,
+                skipAuth = skipAuth,
             )
         },
         tokenOverride = tokenOverride,
@@ -192,7 +211,7 @@ class ApiClient(
     ): String {
         val key = idempotencyKey ?: autoIdempotencyKey("POST", url)
         return executeWithAuthRefresh(
-            buildRequest = { override ->
+            buildRequest = { override, skipAuth ->
                 val multipart = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .apply {
@@ -208,7 +227,11 @@ class ApiClient(
                     .url(url)
                     .apply {
                         if (!key.isNullOrBlank()) header("Idempotency-Key", key)
-                        if (!override.isNullOrBlank()) header("Authorization", "Bearer $override")
+                        if (skipAuth) {
+                            header(IgngHttpClientFactory.SKIP_AUTH_HEADER, "1")
+                        } else if (!override.isNullOrBlank()) {
+                            header("Authorization", "Bearer $override")
+                        }
                     }
                     .post(multipart)
                     .build()
@@ -225,17 +248,19 @@ class ApiClient(
         ifMatch: String?,
         tokenOverride: String?,
         suppressAuthNotify: Boolean,
+        allowAnonymousFallback: Boolean = false,
     ): String {
         var attempt = 0
         var lastError: Throwable? = null
         while (attempt < 2) {
             try {
                 return executeWithAuthRefresh(
-                    buildRequest = { override ->
-                        buildJsonRequest(method, url, body, ifMatch, null, override)
+                    buildRequest = { override, skipAuth ->
+                        buildJsonRequest(method, url, body, ifMatch, null, override, skipAuth)
                     },
                     tokenOverride = tokenOverride,
                     suppressAuthNotify = suppressAuthNotify,
+                    allowAnonymousFallback = allowAnonymousFallback,
                 )
             } catch (error: ApiException) {
                 if (error.isServerTransient && attempt == 0) {
@@ -260,11 +285,12 @@ class ApiClient(
     }
 
     private suspend fun executeWithAuthRefresh(
-        buildRequest: (tokenOverride: String?) -> Request,
+        buildRequest: (tokenOverride: String?, skipAuth: Boolean) -> Request,
         tokenOverride: String?,
         suppressAuthNotify: Boolean,
+        allowAnonymousFallback: Boolean = false,
     ): String {
-        val first = withContext(Dispatchers.IO) { executeCall(buildRequest(tokenOverride)) }
+        val first = withContext(Dispatchers.IO) { executeCall(buildRequest(tokenOverride, false)) }
         if (first is CallOutcome.Success) return first.body
 
         val err = first as CallOutcome.Failure
@@ -274,24 +300,46 @@ class ApiClient(
             !err.sentBearerToken.isNullOrBlank() &&
             tokenRefresher != null
 
+        var sessionInvalidated = false
         if (canRefresh) {
-            val freshToken = runCatching {
+            val outcome = runCatching {
                 tokenRefresher!!.refreshIfNeeded(err.sentBearerToken!!)
-            }.getOrNull()
-            if (!freshToken.isNullOrBlank()) {
-                val retry = withContext(Dispatchers.IO) { executeCall(buildRequest(freshToken)) }
-                if (retry is CallOutcome.Success) return retry.body
-                val retryErr = retry as CallOutcome.Failure
-                if (retryErr.exception.statusCode == 401) {
-                    sessionExpiredNotifier?.notify(retryErr.url, retryErr.exception.message)
+            }.getOrElse { TokenRefreshResult.TransientFailure }
+            when (outcome) {
+                is TokenRefreshResult.Refreshed -> {
+                    val retry = withContext(Dispatchers.IO) { executeCall(buildRequest(outcome.accessToken, false)) }
+                    if (retry is CallOutcome.Success) return retry.body
+                    val retryErr = retry as CallOutcome.Failure
+                    if (retryErr.exception.statusCode == 401) {
+                        sessionExpiredNotifier?.notify(retryErr.url, retryErr.exception.message)
+                    }
+                    throw retryErr.exception
                 }
-                throw retryErr.exception
+                TokenRefreshResult.Invalidated -> {
+                    sessionInvalidated = true
+                }
+                TokenRefreshResult.TransientFailure -> {
+                    throw err.exception
+                }
             }
         }
 
-        if (err.exception.statusCode == 401 && !suppressAuthNotify && !err.sentBearerToken.isNullOrBlank()) {
+        if (err.exception.statusCode == 401 && !suppressAuthNotify &&
+            (!err.sentBearerToken.isNullOrBlank() || hasInvalidatedSession())
+        ) {
             sessionExpiredNotifier?.notify(err.url, err.exception.message)
         }
+
+        if (allowAnonymousFallback &&
+            err.exception.statusCode == 401 &&
+            !err.sentBearerToken.isNullOrBlank() &&
+            (sessionInvalidated || hasInvalidatedSession())
+        ) {
+            val anonymousRetry = withContext(Dispatchers.IO) { executeCall(buildRequest(null, true)) }
+            if (anonymousRetry is CallOutcome.Success) return anonymousRetry.body
+            throw (anonymousRetry as CallOutcome.Failure).exception
+        }
+
         throw err.exception
     }
 
@@ -302,12 +350,17 @@ class ApiClient(
         ifMatch: String?,
         idempotencyKey: String?,
         tokenOverride: String?,
+        skipAuth: Boolean = false,
     ): Request = Request.Builder()
         .url(url)
         .apply {
             if (!ifMatch.isNullOrBlank()) header("If-Match", ifMatch)
             if (!idempotencyKey.isNullOrBlank()) header("Idempotency-Key", idempotencyKey)
-            if (!tokenOverride.isNullOrBlank()) header("Authorization", "Bearer $tokenOverride")
+            if (skipAuth) {
+                header(IgngHttpClientFactory.SKIP_AUTH_HEADER, "1")
+            } else if (!tokenOverride.isNullOrBlank()) {
+                header("Authorization", "Bearer $tokenOverride")
+            }
         }
         .method(method, body?.toRequestBody(JSON_MEDIA_TYPE))
         .build()

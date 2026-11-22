@@ -73,6 +73,7 @@ data class MapTargetItem(
     val family: ServerFamilyDto,
     val season: ServerSeasonDto,
     val isSnapshot: Boolean,
+    val isArchived: Boolean = false,
 )
 
 @Composable
@@ -97,19 +98,22 @@ fun WorldMapScreen(
             .getOrElse { exploreRepository.readCachedFamilies() }
         val built = families.flatMap { fam ->
             fam.allKnownSeasons
-                .filter { it.hasMap || it.mapMode != "none" || it.state == "retired" }
+                .filter { it.hasViewableMap }
                 .map { season ->
                     MapTargetItem(
                         family = fam,
                         season = season,
-                        isSnapshot = season.state == "retired" || season.mapMode == "snapshot",
+                        isSnapshot = season.isSnapshotMap,
+                        isArchived = season.isArchivedMap,
                     )
                 }
         }
         targets = built
         selected = built.firstOrNull {
             it.family.slug == initialFamilySlug && (initialSeasonSlug == null || it.season.slug == initialSeasonSlug)
-        } ?: built.firstOrNull { !it.isSnapshot } ?: built.firstOrNull()
+        } ?: built.firstOrNull { !it.isSnapshot && !it.isArchived }
+            ?: built.firstOrNull { !it.isSnapshot }
+            ?: built.firstOrNull()
         loading = false
     }
 
@@ -180,7 +184,11 @@ fun WorldMapScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = if (selected?.isSnapshot == true) "历史快照（双指缩放）" else "实时 Conflux 地图",
+                                text = when {
+                                    selected?.isSnapshot == true -> "历史快照（双指缩放）"
+                                    selected?.isArchived == true -> "归档交互地图（中继存档）"
+                                    else -> "实时 Conflux 地图"
+                                },
                                 style = IgngTheme.type.badge,
                                 color = colors.textSecondary,
                             )
@@ -230,7 +238,7 @@ fun WorldMapScreen(
         IgngDetailSheet(
             onDismiss = { showSwitcher = false },
             title = "切换服务器地图",
-            subtitle = "实时地图与历史周目快照",
+            subtitle = "实时地图、归档交互地图与历史快照",
         ) {
             LazyColumn(
                 contentPadding = PaddingValues(bottom = 8.dp),
@@ -257,8 +265,16 @@ fun WorldMapScreen(
                                 )
                             }
                             IgngBadge(
-                                text = if (item.isSnapshot) "历史快照" else "实时地图",
-                                tone = if (item.isSnapshot) IgngBadgeTone.Neutral else IgngBadgeTone.Success,
+                                text = when {
+                                    item.isSnapshot -> "历史快照"
+                                    item.isArchived -> "归档地图"
+                                    else -> "实时地图"
+                                },
+                                tone = when {
+                                    item.isSnapshot -> IgngBadgeTone.Neutral
+                                    item.isArchived -> IgngBadgeTone.Accent
+                                    else -> IgngBadgeTone.Success
+                                },
                             )
                         }
                     }
