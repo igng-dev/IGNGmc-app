@@ -97,6 +97,18 @@ data class ServerSeasonDto(
 ) {
     val serverId: Int?
         get() = numericServerId ?: V1Id.parseNumeric(serverIdRaw)
+
+    val normalizedMapMode: String
+        get() = mapMode.trim().lowercase()
+
+    val hasViewableMap: Boolean
+        get() = hasMap || (normalizedMapMode.isNotEmpty() && normalizedMapMode != "none")
+
+    val isSnapshotMap: Boolean
+        get() = normalizedMapMode == "snapshot"
+
+    val isArchivedMap: Boolean
+        get() = normalizedMapMode == "archived"
 }
 
 @Serializable

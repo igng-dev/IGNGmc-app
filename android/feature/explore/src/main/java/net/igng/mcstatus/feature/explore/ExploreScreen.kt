@@ -604,7 +604,7 @@ private fun ServerFamilyHeroCard(
                         icon = Icons.Rounded.Explore,
                         modifier = Modifier.weight(1f),
                     )
-                    if (season?.hasMap == true || season?.mapMode != "none") {
+                    if (season?.hasViewableMap == true) {
                         IgngButton(
                             text = "打开地图",
                             onClick = onOpenMap,

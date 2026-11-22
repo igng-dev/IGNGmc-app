@@ -66,7 +66,7 @@ class ExploreRepository(
     private val json: Json = api.json,
 ) {
     suspend fun fetchHomeFamilies(): List<ServerFamilyDto> {
-        val raw = api.get("${endpoints.api}/api/v1/mc/servers")
+        val raw = api.get("${endpoints.api}/api/v1/mc/servers", allowAnonymousFallback = true)
         cache.write("home_families_v1", raw)
         return json.decodeFromString<HomeServersResponse>(raw).families
     }
@@ -78,7 +78,7 @@ class ExploreRepository(
 
     suspend fun fetchMotd(serverId: Int): MotdResponse {
         val sid = V1Id.format("srv", serverId)
-        return json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/servers/$sid/motd"))
+        return json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/servers/$sid/motd", allowAnonymousFallback = true))
     }
 
     suspend fun search(query: String): List<SearchResultItem> {
@@ -87,26 +87,26 @@ class ExploreRepository(
         val url = "${endpoints.api}/api/v1/mc/search".toHttpUrl().newBuilder()
             .addQueryParameter("q", trimmed)
             .build().toString()
-        return json.decodeFromString<GlobalSearchResponse>(api.get(url)).results
+        return json.decodeFromString<GlobalSearchResponse>(api.get(url, allowAnonymousFallback = true)).results
     }
 
     suspend fun fetchPlayerProfile(igngId: Int): PublicPlayerProfileResponse =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/users/${V1Id.format("usr", igngId)}/mc-profile"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/users/${V1Id.format("usr", igngId)}/mc-profile", allowAnonymousFallback = true))
 
     suspend fun fetchPlayerProfileStats(igngId: Int): VanillaStatsResponse =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/users/${V1Id.format("usr", igngId)}/mc-stats"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/users/${V1Id.format("usr", igngId)}/mc-stats", allowAnonymousFallback = true))
 
     suspend fun fetchPlayerProfileMedals(igngId: Int): MedalProfileDto =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/users/${V1Id.format("usr", igngId)}/mc-medals"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/users/${V1Id.format("usr", igngId)}/mc-medals", allowAnonymousFallback = true))
 
     suspend fun fetchMcCharacter(username: String): McCharacterProfileResponse =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/characters/${Uri.encode(username)}"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/characters/${Uri.encode(username)}", allowAnonymousFallback = true))
 
     suspend fun fetchPublicLands(): List<HallLandDto> =
-        json.decodeFromString<HallLandsResponse>(api.get("${endpoints.api}/api/v1/mc/hall/lands")).data
+        json.decodeFromString<HallLandsResponse>(api.get("${endpoints.api}/api/v1/mc/hall/lands", allowAnonymousFallback = true)).data
 
     suspend fun fetchPublicFakePlayers(): List<HallFakePlayerDto> =
-        json.decodeFromString<HallFakePlayersResponse>(api.get("${endpoints.api}/api/v1/mc/hall/fake-players")).data
+        json.decodeFromString<HallFakePlayersResponse>(api.get("${endpoints.api}/api/v1/mc/hall/fake-players", allowAnonymousFallback = true)).data
 
     suspend fun fetchPublicTickets(query: String = "", includeClosed: Boolean = true, page: Int = 1): TicketListResponse {
         val url = "${endpoints.api}/api/v1/mc/hall/tickets".toHttpUrl().newBuilder()
@@ -115,14 +115,14 @@ class ExploreRepository(
             .addQueryParameter("include_closed", includeClosed.toString())
             .apply { if (query.isNotBlank()) addQueryParameter("q", query.trim()) }
             .build().toString()
-        return json.decodeFromString(api.get(url))
+        return json.decodeFromString(api.get(url, allowAnonymousFallback = true))
     }
 
     suspend fun fetchPublicTicketDetail(id: Int): TicketDetailDto =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/hall/tickets/${V1Id.format("tk", id)}"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/hall/tickets/${V1Id.format("tk", id)}", allowAnonymousFallback = true))
 
     suspend fun fetchPublicPerfectRoster(): PublicPerfectRosterResponse =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/perfect"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/perfect", allowAnonymousFallback = true))
 }
 
 class StatusRepository(
@@ -131,7 +131,7 @@ class StatusRepository(
     private val json: Json = api.json,
 ) {
     suspend fun fetchPublicStatus(): PublicStatusResponse =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/status"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/mc/status", allowAnonymousFallback = true))
 
     suspend fun fetchPublicHistory(
         preset: StatusRangePreset,
@@ -144,7 +144,7 @@ class StatusRepository(
             .addQueryParameter("end", end.toString())
             .apply { if (serverId != null) addQueryParameter("server_id", V1Id.format("srv", serverId)) }
             .build().toString()
-        return json.decodeFromString(api.get(url))
+        return json.decodeFromString(api.get(url, allowAnonymousFallback = true))
     }
 }
 
@@ -154,7 +154,7 @@ class ChatRepository(
     private val json: Json = api.json,
 ) {
     suspend fun fetchSources(): ChatSourcesResponse =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/chat/sources"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/chat/sources", allowAnonymousFallback = true))
 
     suspend fun fetchMessages(
         source: String,
@@ -181,11 +181,11 @@ class ChatRepository(
                 if (!beforeId.isNullOrBlank()) addQueryParameter("before_id", beforeId)
             }
             .build().toString()
-        return json.decodeFromString(api.get(url))
+        return json.decodeFromString(api.get(url, allowAnonymousFallback = true))
     }
 
     suspend fun fetchForwardDetail(messageId: String): ChatForwardResponse =
-        json.decodeFromString(api.get("${endpoints.api}/api/v1/chat/messages/${Uri.encode(messageId)}/forward"))
+        json.decodeFromString(api.get("${endpoints.api}/api/v1/chat/messages/${Uri.encode(messageId)}/forward", allowAnonymousFallback = true))
 }
 
 class WikiRepository(
@@ -198,7 +198,7 @@ class WikiRepository(
         val url = "${endpoints.api}/api/v1/wiki/catalog".toHttpUrl().newBuilder()
             .addQueryParameter("kb", kb)
             .build().toString()
-        val raw = api.get(url)
+        val raw = api.get(url, allowAnonymousFallback = true)
         cache.write("wiki_catalog_v1_$kb", raw)
         return json.decodeFromString(raw)
     }
@@ -212,7 +212,7 @@ class WikiRepository(
         val url = "${endpoints.api}/api/v1/wiki/pages/$pageId".toHttpUrl().newBuilder()
             .addQueryParameter("kb", kb)
             .build().toString()
-        val raw = api.get(url)
+        val raw = api.get(url, allowAnonymousFallback = true)
         cache.write("wiki_page_v1_${kb}_$pageId", raw)
         return json.decodeFromString<WikiPageResponse>(raw).page
     }

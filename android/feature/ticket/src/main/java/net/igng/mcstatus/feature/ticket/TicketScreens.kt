@@ -525,9 +525,6 @@ fun TicketDetailScreen(
                                 etag = t.etag,
                                 payload = UpdateTicketPayload(
                                     title = editTitle.trim(),
-                                    ticketType = t.type,
-                                    targets = t.targets.map { it.mcUsername },
-                                    accessPolicy = t.accessPolicy,
                                 ),
                             )
                         }.onSuccess {

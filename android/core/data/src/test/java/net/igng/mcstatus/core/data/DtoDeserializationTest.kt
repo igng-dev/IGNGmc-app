@@ -5,9 +5,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.igng.mcstatus.core.auth.OAuthTokenResponse
 import net.igng.mcstatus.core.model.BootstrapResponse
+import net.igng.mcstatus.core.network.ApiClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -246,5 +248,50 @@ class DtoDeserializationTest {
         val traffic = json.decodeFromString<TrafficAdminResponse>(trafficRaw)
         assertEquals(3145728L, traffic.totals.total)
         assertEquals("198.51.100.10", traffic.topIps.first().ip)
+    }
+
+    @Test
+    fun resolvesArchivedAndRetiredMapModesCorrectly() {
+        val archived = ServerSeasonDto(slug = "s2", state = "retired", mapMode = "archived", hasMap = true)
+        assertTrue(archived.hasViewableMap)
+        assertTrue(archived.isArchivedMap)
+        assertFalse(archived.isSnapshotMap)
+
+        val snapshot = ServerSeasonDto(slug = "s1", state = "retired", mapMode = "snapshot", hasMap = true)
+        assertTrue(snapshot.hasViewableMap)
+        assertFalse(snapshot.isArchivedMap)
+        assertTrue(snapshot.isSnapshotMap)
+
+        val retiredWithoutMap = ServerSeasonDto(slug = "s0", state = "retired", mapMode = "none", hasMap = false)
+        assertFalse(retiredWithoutMap.hasViewableMap)
+        assertFalse(retiredWithoutMap.isArchivedMap)
+        assertFalse(retiredWithoutMap.isSnapshotMap)
+    }
+
+    @Test
+    fun serializesTicketPatchAndAccessPolicyWithRequiredKeys() {
+        val partialRaw = ApiClient.DefaultJson.encodeToString(
+            UpdateTicketPayload.serializer(),
+            UpdateTicketPayload(title = "修改后的标题"),
+        )
+        val partialObj = ApiClient.DefaultJson.parseToJsonElement(partialRaw).jsonObject
+        assertEquals("修改后的标题", partialObj["title"]?.jsonPrimitive?.content)
+        assertNull(partialObj["ticket_type"])
+        assertNull(partialObj["targets"])
+        assertNull(partialObj["access_policy"])
+
+        val policyRaw = ApiClient.DefaultJson.encodeToString(
+            UpdateTicketPayload.serializer(),
+            UpdateTicketPayload(accessPolicy = TicketAccessPolicy()),
+        )
+        val policyObj = ApiClient.DefaultJson.parseToJsonElement(policyRaw).jsonObject["access_policy"]?.jsonObject
+        assertNotNull(policyObj)
+        for (action in listOf("view", "participate", "manage")) {
+            val rule = policyObj?.get(action)?.jsonObject
+            assertNotNull("Missing action $action", rule)
+            assertEquals("mc.admin", rule?.get("group_code")?.jsonPrimitive?.content)
+            assertNotNull("Missing target_group_enabled for $action", rule?.get("target_group_enabled"))
+        }
+        assertEquals("false", policyObj?.get("manage")?.jsonObject?.get("target_group_enabled")?.jsonPrimitive?.content)
     }
 }

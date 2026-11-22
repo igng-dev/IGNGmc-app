@@ -98,6 +98,7 @@ fun IgngMcApp(
     val accounts by container.accounts.collectAsState()
     val dailyExp by container.dailyExp.collectAsState()
     val bootstrap by container.bootstrap.collectAsState()
+    val sessionEpoch by container.sessionEpoch.collectAsState()
     val incomingIntent by incomingIntentFlow.collectAsState()
 
     IgngTheme(
@@ -172,31 +173,29 @@ fun IgngMcApp(
             }
         }
 
-        // Refresh bootstrap state, user metadata, admin role & settle daily login EXP whenever active user changes
-        LaunchedEffect(activeAccount?.userId) {
-            val acc = activeAccount
-            if (acc == null) {
-                runCatching { container.authRepository.fetchBootstrap(token = null) }
-                    .onSuccess { container.updateBootstrap(it) }
-                return@LaunchedEffect
-            }
-            runCatching { container.authRepository.fetchBootstrap(acc.token) }.onSuccess { boot ->
+        // Refresh bootstrap state, user metadata, admin role & settle daily login EXP whenever active session changes
+        LaunchedEffect(activeAccount?.userId, sessionEpoch) {
+            val boot = runCatching { container.fetchBootstrapForCurrentSession() }.getOrNull()
+            if (boot != null) {
                 container.updateBootstrap(boot)
+                val current = container.activeAccount.value
                 val viewerUser = boot.viewer.user
-                if (boot.viewer.authenticated && viewerUser != null) {
-                    val updated = acc.copy(
-                        username = viewerUser.username.ifBlank { acc.username },
-                        nickname = viewerUser.nickname ?: acc.nickname,
-                        avatarUrl = viewerUser.avatarUrl ?: acc.avatarUrl,
-                        adminRoleWire = boot.viewer.adminRole ?: acc.adminRoleWire,
+                if (current != null && boot.viewer.authenticated && viewerUser != null) {
+                    val updated = current.copy(
+                        username = viewerUser.username.ifBlank { current.username },
+                        nickname = viewerUser.nickname ?: current.nickname,
+                        avatarUrl = viewerUser.avatarUrl ?: current.avatarUrl,
+                        adminRoleWire = boot.viewer.adminRole ?: current.adminRoleWire,
                     )
-                    if (updated != acc) {
+                    if (updated != current) {
                         container.saveAndActivateAccount(updated, resetDailyExp = false)
                     }
                 }
             }
-            val exp = container.authRepository.settleDailyLogin(acc.token)
-            container.updateDailyExp(exp)
+            if (boot?.viewer?.authenticated == true) {
+                val exp = container.settleDailyLoginForCurrentSession()
+                container.updateDailyExp(exp)
+            }
         }
 
         // Global 401 listener: offer seamless re-auth without destroying user's current screen/draft

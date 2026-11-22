@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import coil3.ImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import java.util.Collections
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,9 +25,11 @@ import net.igng.mcstatus.core.model.SavedAccount
 import net.igng.mcstatus.core.model.SiteEndpoints
 import net.igng.mcstatus.core.model.ThemeMode
 import net.igng.mcstatus.core.network.ApiClient
+import net.igng.mcstatus.core.network.ApiException
 import net.igng.mcstatus.core.network.IgngHttpClientFactory
 import net.igng.mcstatus.core.network.SessionExpiredNotifier
 import net.igng.mcstatus.core.network.SingleFlightTokenRefresher
+import net.igng.mcstatus.core.network.TokenRefreshResult
 
 private val Context.igngPrefsDataStore by preferencesDataStore(name = "igng_mc_v2_prefs")
 
@@ -97,9 +100,26 @@ class IgngAppContainer(
     private val _bootstrap = MutableStateFlow<BootstrapResponse?>(null)
     val bootstrap: StateFlow<BootstrapResponse?> = _bootstrap.asStateFlow()
 
+    private val _sessionEpoch = MutableStateFlow(0)
+    val sessionEpoch: StateFlow<Int> = _sessionEpoch.asStateFlow()
+
+    // Tokens proven invalid (e.g. pre-v2.1.0 legacy session tokens or revoked refresh families).
+    // Suppressing them from subsequent requests prevents 401 poisoning of public optionalAuth tabs.
+    private val invalidatedTokens: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
+
+    private fun activeUsableToken(): String? {
+        val token = _activeAccount.value?.token?.takeIf { it.isNotBlank() } ?: return null
+        return token.takeUnless { invalidatedTokens.contains(it) }
+    }
+
+    private fun isActiveSessionInvalidated(): Boolean {
+        val token = _activeAccount.value?.token?.takeIf { it.isNotBlank() } ?: return false
+        return invalidatedTokens.contains(token)
+    }
+
     val okHttpClient = IgngHttpClientFactory.create(
         endpoints = endpoints,
-        tokenProvider = { _activeAccount.value?.token },
+        tokenProvider = { activeUsableToken() },
         deviceIdProvider = { deviceId },
         clientVersion = clientVersion,
     )
@@ -114,16 +134,38 @@ class IgngAppContainer(
     val authRepository = AuthRepository(endpoints, authApiClient)
 
     private val tokenRefresher = SingleFlightTokenRefresher(
-        currentTokenProvider = { _activeAccount.value?.token },
+        currentTokenProvider = { activeUsableToken() },
+        isTokenInvalidated = { invalidatedTokens.contains(it) },
         refreshBlock = { failedAccessToken ->
-            val current = _activeAccount.value ?: return@SingleFlightTokenRefresher null
-            if (current.token != failedAccessToken) return@SingleFlightTokenRefresher current.token
-            val rotated = runCatching { authRepository.refreshSession(current) }.getOrNull()
-                ?: return@SingleFlightTokenRefresher null
-            sessionStore.save(rotated)
-            _activeAccount.value = sessionStore.activeAccount()
-            _accounts.value = sessionStore.accounts()
-            rotated.token
+            val current = _activeAccount.value ?: return@SingleFlightTokenRefresher TokenRefreshResult.Invalidated
+            if (current.token != failedAccessToken && !invalidatedTokens.contains(current.token)) {
+                return@SingleFlightTokenRefresher TokenRefreshResult.Refreshed(current.token)
+            }
+            if (current.refreshToken.isNullOrBlank()) {
+                invalidatedTokens.add(failedAccessToken)
+                return@SingleFlightTokenRefresher TokenRefreshResult.Invalidated
+            }
+            try {
+                val rotated = authRepository.refreshSession(current)
+                if (rotated == null) {
+                    invalidatedTokens.add(failedAccessToken)
+                    return@SingleFlightTokenRefresher TokenRefreshResult.Invalidated
+                }
+                invalidatedTokens.remove(rotated.token)
+                sessionStore.save(rotated)
+                _activeAccount.value = sessionStore.activeAccount()
+                _accounts.value = sessionStore.accounts()
+                TokenRefreshResult.Refreshed(rotated.token)
+            } catch (error: ApiException) {
+                if (error.statusCode in listOf(400, 401, 403)) {
+                    invalidatedTokens.add(failedAccessToken)
+                    TokenRefreshResult.Invalidated
+                } else {
+                    TokenRefreshResult.TransientFailure
+                }
+            } catch (_: Exception) {
+                TokenRefreshResult.TransientFailure
+            }
         },
     )
 
@@ -131,6 +173,7 @@ class IgngAppContainer(
         okHttpClient = okHttpClient,
         sessionExpiredNotifier = sessionExpiredNotifier,
         tokenRefresher = tokenRefresher,
+        hasInvalidatedSession = { isActiveSessionInvalidated() },
     )
 
     val imageLoader: ImageLoader = ImageLoader.Builder(appContext)
@@ -152,11 +195,28 @@ class IgngAppContainer(
     val ticketRepository = TicketRepository(endpoints, apiClient, draftCache)
     val adminRepository = AdminRepository(endpoints, apiClient)
 
+    suspend fun fetchBootstrapForCurrentSession(): BootstrapResponse =
+        apiClient.json.decodeFromString(
+            apiClient.get(
+                url = "${endpoints.api}/api/v1/mc/bootstrap",
+                allowAnonymousFallback = true,
+            ),
+        )
+
+    suspend fun settleDailyLoginForCurrentSession(): DailyExpStatus? {
+        val token = activeUsableToken() ?: return null
+        return authRepository.settleDailyLogin(token)
+    }
+
     fun saveAndActivateAccount(account: SavedAccount, resetDailyExp: Boolean = true) {
+        invalidatedTokens.remove(account.token)
         sessionStore.save(account)
         _activeAccount.value = sessionStore.activeAccount()
         _accounts.value = sessionStore.accounts()
-        if (resetDailyExp) _dailyExp.value = null
+        if (resetDailyExp) {
+            _dailyExp.value = null
+            _sessionEpoch.value += 1
+        }
     }
 
     fun switchAccount(userId: Int) {
@@ -164,13 +224,16 @@ class IgngAppContainer(
         _activeAccount.value = sessionStore.activeAccount()
         _accounts.value = sessionStore.accounts()
         _dailyExp.value = null
+        _sessionEpoch.value += 1
     }
 
     fun removeActiveAccount() {
+        _activeAccount.value?.token?.let { invalidatedTokens.remove(it) }
         sessionStore.removeActive()
         _activeAccount.value = sessionStore.activeAccount()
         _accounts.value = sessionStore.accounts()
         _dailyExp.value = null
+        _sessionEpoch.value += 1
     }
 
     fun updateDailyExp(status: DailyExpStatus?) {
