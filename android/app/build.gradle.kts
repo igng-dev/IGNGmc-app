@@ -18,8 +18,8 @@ android {
         applicationId = "net.igng.mcstatus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20100
-        versionName = "2.1.0"
+        versionCode = 20200
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
