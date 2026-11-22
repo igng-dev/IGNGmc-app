@@ -1,15 +1,37 @@
 package net.igng.mcstatus.core.model
 
+/**
+ * Helpers for IGNG Internal API v1 typed prefixed identifiers (`srv_3`, `tk_2048`, `usr_1024`, `land_4091`).
+ */
+object V1Id {
+    fun format(prefix: String, numericId: Int): String = "${prefix}_$numericId"
+
+    fun parseNumeric(raw: String?): Int? {
+        val text = raw?.trim().orEmpty()
+        if (text.isEmpty()) return null
+        text.toIntOrNull()?.let { return it }
+        val idx = text.lastIndexOf('_')
+        if (idx in 0 until text.lastIndex) {
+            return text.substring(idx + 1).toIntOrNull()
+        }
+        return null
+    }
+}
+
 data class SiteEndpoints(
+    val apiBaseUrl: String = "https://www.igng.net",
     val mcBaseUrl: String = "https://mc.igng.net",
     val dashBaseUrl: String = "https://dash.igng.net",
     val ssoBaseUrl: String = "https://sso.igng.net",
     val chatBaseUrl: String = "https://chat.igng.net",
-    val wikiBaseUrl: String = "https://docs.igng.net",
+    val wikiBaseUrl: String = "https://wiki.igng.net",
     val mapRelayUrl: String = "https://map-api.igng.net",
     val bbsBaseUrl: String = "https://www.igngbbs.net",
     val igngBaseUrl: String = "https://www.igng.net",
 ) {
+    /** Unified first-party Client API v1 gateway (`https://www.igng.net`). */
+    val api: String = apiBaseUrl.trimEnd('/')
+    /** Web-only origins (Custom Tabs / World Map WebView / static snapshots). Never send API requests here. */
     val mc: String = mcBaseUrl.trimEnd('/')
     val dash: String = dashBaseUrl.trimEnd('/')
     val sso: String = ssoBaseUrl.trimEnd('/')
@@ -19,26 +41,27 @@ data class SiteEndpoints(
     val bbs: String = bbsBaseUrl.trimEnd('/')
     val igng: String = igngBaseUrl.trimEnd('/')
 
+    /** Bearer tokens are ONLY attached to the unified v1 gateway and SSO origin. */
     fun trustedAuthHosts(): Set<String> = setOf(
-        hostOf(mc),
-        hostOf(dash),
+        hostOf(api),
         hostOf(sso),
-        hostOf(chat),
-        hostOf(igng),
-        "account.igng.net",
     ).filter { it.isNotBlank() }.toSet()
 
-    fun resolveDashMediaUrl(pathOrUrl: String?): String? {
+    fun apiHost(): String = hostOf(api)
+
+    /** Authenticated v1 binary endpoint for ticket / user media attachments. */
+    fun mediaContentUrl(mediaId: String): String = "$api/api/v1/media/${mediaId.trim()}/content"
+
+    /** Resolves relative `/api/v1/...` media URLs (such as chat media) against the unified v1 gateway. */
+    fun resolveApiMediaUrl(pathOrUrl: String?): String? {
         if (pathOrUrl.isNullOrBlank()) return null
         if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) return pathOrUrl
-        return "$dash/${pathOrUrl.trimStart('/')}"
+        return "$api/${pathOrUrl.trimStart('/')}"
     }
 
-    fun resolveChatMediaUrl(pathOrUrl: String?): String? {
-        if (pathOrUrl.isNullOrBlank()) return null
-        if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) return pathOrUrl
-        return "$chat/${pathOrUrl.trimStart('/')}"
-    }
+    fun resolveDashMediaUrl(pathOrUrl: String?): String? = resolveApiMediaUrl(pathOrUrl)
+
+    fun resolveChatMediaUrl(pathOrUrl: String?): String? = resolveApiMediaUrl(pathOrUrl)
 
     fun snapshotMapUrls(seasonSlug: String): List<String> = listOf(
         "$mc/map-snapshots/$seasonSlug.webp",

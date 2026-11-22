@@ -16,6 +16,7 @@ class IgngApplication : Application(), SingletonImageLoader.Factory {
         container = IgngAppContainer(
             appContext = this,
             endpoints = SiteEndpoints(
+                apiBaseUrl = BuildConfig.API_BASE_URL,
                 mcBaseUrl = BuildConfig.MC_BASE_URL,
                 dashBaseUrl = BuildConfig.DASH_BASE_URL,
                 ssoBaseUrl = BuildConfig.SSO_BASE_URL,
@@ -23,6 +24,7 @@ class IgngApplication : Application(), SingletonImageLoader.Factory {
                 wikiBaseUrl = BuildConfig.WIKI_BASE_URL,
                 mapRelayUrl = BuildConfig.MAP_RELAY_URL,
             ),
+            clientVersion = BuildConfig.VERSION_NAME,
         )
     }
 

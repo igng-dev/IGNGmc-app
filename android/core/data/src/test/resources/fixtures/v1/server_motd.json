@@ -1,0 +1,13 @@
+{
+  "server_id": "srv_3",
+  "numeric_server_id": 3,
+  "online": true,
+  "motd": "IGNG 生存服 第六周目",
+  "players": {
+    "online": 18,
+    "max": 100
+  },
+  "version": "Paper 1.21.4",
+  "ping_ms": 24,
+  "error": null
+}

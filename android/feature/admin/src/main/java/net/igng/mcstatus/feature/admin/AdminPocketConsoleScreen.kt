@@ -208,16 +208,22 @@ fun AdminPocketConsoleScreen(
                     }
                     if (playerResults.isNotEmpty()) {
                         item { IgngSectionHeader(title = "匹配玩家") }
-                        items(playerResults, key = { "${it.igngId}:${it.mcUsername}:${it.username}" }) { p ->
+                        items(playerResults, key = { "${it.kind}:${it.igngId}:${it.mcUsername}:${it.displayName}" }) { p ->
                             IgngTile(modifier = Modifier.fillMaxWidth()) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(p.mcUsername ?: p.nickname ?: p.username ?: "玩家", style = IgngTheme.type.cardTitle, color = colors.textPrimary)
-                                    if (p.isBanned) IgngBadge("封禁中", tone = IgngBadgeTone.Danger)
-                                    else if (p.isMuted) IgngBadge("禁言中", tone = IgngBadgeTone.Warning)
-                                    else IgngBadge("正常", tone = IgngBadgeTone.Success)
+                                    Text(p.mcUsername ?: p.displayName ?: "玩家", style = IgngTheme.type.cardTitle, color = colors.textPrimary)
+                                    IgngBadge(
+                                        text = if (p.hasBoundMc) "已绑定" else if (p.kind == "igng") "IGNG 账户" else "MC 角色",
+                                        tone = if (p.hasBoundMc) IgngBadgeTone.Success else IgngBadgeTone.Neutral,
+                                    )
                                 }
-                                if (p.boundAccounts.isNotEmpty()) {
-                                    Text("绑定角色：${p.boundAccounts.joinToString("、")}", style = IgngTheme.type.caption, color = colors.textSecondary)
+                                val detailLine = buildList {
+                                    p.displayName?.takeIf { it != p.mcUsername }?.let { add("昵称：$it") }
+                                    if (p.playTimeFormatted.isNotBlank()) add("游玩 ${p.playTimeFormatted}")
+                                    if (p.medalCount > 0) add("勋章 ${p.medalCount}")
+                                }.joinToString(" · ")
+                                if (detailLine.isNotBlank()) {
+                                    Text(detailLine, style = IgngTheme.type.caption, color = colors.textSecondary)
                                 }
                             }
                         }
@@ -235,13 +241,13 @@ fun AdminPocketConsoleScreen(
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 Text(r.reason ?: "无理由说明", style = IgngTheme.type.body, color = colors.textSecondary)
-                                Text("执行人：${r.admin_name ?: r.banned_by_name ?: "系统"} · ${IgngFormatters.formatIsoDateTime(r.started_at, short = true)}", style = IgngTheme.type.badge, color = colors.textMuted)
+                                Text("执行人：${r.admin_name ?: "系统"} · ${IgngFormatters.formatIsoDateTime(r.started_at, short = true)}", style = IgngTheme.type.badge, color = colors.textMuted)
                             }
                         }
                     }
                 }
                 section == AdminSection.HISTORIAN -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    val serverNames = historianList?.servers.orEmpty().associate { it.server_id to it.server_name }
+                    val serverNames = historianList?.servers.orEmpty().associate { it.serverId to it.serverName }
                     val reports = historianList?.items.orEmpty()
                     if (reports.isEmpty()) {
                         item { IgngStateBlock(title = "还没有服务器观察周报") }
@@ -259,15 +265,15 @@ fun AdminPocketConsoleScreen(
                             ) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(
-                                        text = "${serverNames[report.server_id] ?: "服务器 ${report.server_id}"} · ${report.period_start}",
+                                        text = "${serverNames[report.serverId] ?: report.serverId} · ${report.periodStart}",
                                         style = IgngTheme.type.cardTitle,
                                         color = colors.textPrimary,
                                     )
-                                    IgngBadge(report.status ?: report.period_kind, tone = if (report.status == "succeeded" || report.status == "completed") IgngBadgeTone.Success else IgngBadgeTone.Neutral)
+                                    IgngBadge(report.status ?: report.periodKind, tone = if (report.status == "succeeded" || report.status == "completed") IgngBadgeTone.Success else IgngBadgeTone.Neutral)
                                 }
-                                report.summary?.takeIf { it.isNotBlank() }?.let { summary ->
+                                report.title?.takeIf { it.isNotBlank() }?.let { titleText ->
                                     Spacer(Modifier.height(4.dp))
-                                    Text(summary, style = IgngTheme.type.body, color = colors.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                    Text(titleText, style = IgngTheme.type.body, color = colors.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -326,12 +332,17 @@ fun AdminPocketConsoleScreen(
                         }
                     }
                     nodesData?.let { nd ->
-                        item { IgngSectionHeader(title = "探针与服务器实时健康", subtitle = "${nd.nodes.size} 个采集节点") }
-                        items(nd.data.values.toList(), key = { it.server?.server_id ?: it.hashCode() }) { srv ->
+                        item {
+                            IgngSectionHeader(
+                                title = "探针与服务器实时健康",
+                                subtitle = nd.collector?.label ?: "${nd.servers.size} 台启用服务器",
+                            )
+                        }
+                        items(nd.servers, key = { it.serverId.ifBlank { it.hashCode().toString() } }) { srv ->
                             IgngTile(modifier = Modifier.fillMaxWidth()) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(srv.server?.server_name ?: "服务器", style = IgngTheme.type.cardTitle, color = colors.textPrimary)
-                                    val overall = srv.status?.overall ?: "unknown"
+                                    Text(srv.serverName.ifBlank { srv.serverId }, style = IgngTheme.type.cardTitle, color = colors.textPrimary)
+                                    val overall = srv.status.overall
                                     IgngBadge(
                                         overall,
                                         tone = when (overall) {
@@ -342,7 +353,7 @@ fun AdminPocketConsoleScreen(
                                     )
                                 }
                                 Text(
-                                    "TPS ${IgngFormatters.formatDecimal(srv.performance?.avg_tps, 1)} · 玩家 ${IgngFormatters.formatNumber(srv.performance?.online_players)} · 网络 ${srv.status?.network ?: "—"}",
+                                    "TPS ${IgngFormatters.formatDecimal(srv.performance?.tps, 1)} · 玩家 ${IgngFormatters.formatNumber(srv.performance?.onlinePlayers)} · 网络 ${srv.status.network}",
                                     style = IgngTheme.type.caption,
                                     color = colors.textSecondary,
                                 )
@@ -407,15 +418,15 @@ fun AdminPocketConsoleScreen(
     if (loadingHistorianDetail || historianDetail != null) {
         IgngDetailSheet(
             onDismiss = { historianDetail = null; loadingHistorianDetail = false },
-            title = historianDetail?.report?.let { "周报 ${it.period_start}" } ?: "服务器观察报告",
-            subtitle = historianDetail?.run?.created_at?.let { "生成于 ${IgngFormatters.formatIsoDateTime(it, short = true)}" },
+            title = historianDetail?.report?.let { "周报 ${it.periodStart}" } ?: "服务器观察报告",
+            subtitle = historianDetail?.run?.createdAt?.let { "生成于 ${IgngFormatters.formatIsoDateTime(it, short = true)}" },
         ) {
             if (loadingHistorianDetail) {
                 IgngLoadingBlock(compact = true)
             } else {
                 val run = historianDetail?.run
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    val bodyText = run?.report_markdown ?: run?.markdown ?: run?.summary ?: "暂无正文"
+                    val bodyText = run?.markdown ?: run?.summary ?: "暂无正文"
                     Text(bodyText, style = IgngTheme.type.body, color = colors.textPrimary)
                     if (!run?.observations.isNullOrEmpty()) {
                         IgngSectionHeader(title = "关键观察项")

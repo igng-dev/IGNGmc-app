@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-11-22T12:00:00Z",
+  "collector": {
+    "id": 1,
+    "name": "bj-probe",
+    "label": "中国大陆 · 北京",
+    "last_seen_at": "2026-11-22T12:00:00Z",
+    "age_seconds": 12,
+    "freshness": "fresh",
+    "version": "2.1.0"
+  },
+  "servers": [
+    {
+      "id": "srv_3",
+      "server_id": "srv_3",
+      "numeric_id": 3,
+      "slug": "survival-s6",
+      "name": "生存服 S6",
+      "family_slug": "survival",
+      "family_name": "IGNG 生存服",
+      "family_label": "原版纯净",
+      "family_kind": "seasonal",
+      "theme_key": "survival",
+      "season_label": "第六周目",
+      "season_state": "live",
+      "season_ordinal": 6,
+      "is_primary": true,
+      "description": "第六周目原版生存",
+      "address": "mc.igng.net",
+      "version": "1.21.4",
+      "core": "Paper",
+      "platform": "Java",
+      "status": "online",
+      "online": true,
+      "online_players": 18,
+      "max_players": 100,
+      "tps": 19.95,
+      "mspt": 14.2,
+      "cpu_usage": 32.5,
+      "memory_usage_mb": 12400,
+      "ping_ms": 24.5,
+      "packet_loss_pct": 0,
+      "ping_status": "healthy",
+      "ping_freshness": "fresh",
+      "last_checked_at": "2026-11-22T12:00:00Z",
+      "components": {
+        "game": {
+          "status": "online",
+          "last_checked_at": "2026-11-22T12:00:00Z",
+          "source": "collector"
+        },
+        "direct": {
+          "status": "online",
+          "last_checked_at": "2026-11-22T12:00:00Z",
+          "source": "collector"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "servers": [
+    {
+      "server_id": "srv_3",
+      "numeric_server_id": 3,
+      "name": "生存服 S6"
+    }
+  ],
+  "qq_groups": [
+    {
+      "id": "123456789",
+      "name": "IGNG 交流主群",
+      "platform": "qq",
+      "is_private": false,
+      "message_count": 420,
+      "last_message_at": "2026-11-22T12:00:00Z",
+      "last_preview": "晚上一起打龙吗"
+    }
+  ],
+  "private_chats": [],
+  "authenticated": true,
+  "can_view_recalled": false
+}

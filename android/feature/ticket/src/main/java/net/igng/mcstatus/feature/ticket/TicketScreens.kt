@@ -95,6 +95,7 @@ import net.igng.mcstatus.core.designsystem.IgngTopBar
 import net.igng.mcstatus.core.designsystem.igngStaggeredReveal
 import net.igng.mcstatus.core.model.IgngFormatters
 import net.igng.mcstatus.core.model.SiteEndpoints
+import net.igng.mcstatus.core.model.V1Id
 
 private enum class TicketRelationFilter(val wire: String, val label: String) {
     ALL("all", "全部"),
@@ -141,7 +142,7 @@ fun TicketsScreen(
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             IgngTopBar(
                 title = "我的工单",
-                subtitle = "来自 dash.igng.net 客服系统",
+                subtitle = "经由 www.igng.net/api/v1 工单服务",
                 onBack = onBack,
                 actions = {
                     IgngButton(
@@ -358,15 +359,15 @@ fun TicketDetailScreen(
 
                         itemsIndexed(ticket.messages, key = { _, m -> m.id }) { idx, msg ->
                             IgngTile(
-                                soft = msg.kind != "INITIAL",
+                                soft = !msg.isInitial,
                                 modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx),
                                 contentPadding = PaddingValues(14.dp),
                             ) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(msg.authorName, style = IgngTheme.type.bodyMedium.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
-                                        msg.authorLabels.forEach { lbl ->
-                                            IgngBadge(lbl.label, tone = if (lbl.tone == "accent" || lbl.tone == "primary") IgngBadgeTone.Accent else IgngBadgeTone.Neutral)
+                                        if (msg.isAdmin) {
+                                            IgngBadge("管理员", tone = IgngBadgeTone.Accent)
                                         }
                                     }
                                     Text(IgngFormatters.formatIsoDateTime(msg.createdAt, short = true), style = IgngTheme.type.badge, color = colors.textMuted)
@@ -379,21 +380,17 @@ fun TicketDetailScreen(
                                     Spacer(Modifier.height(8.dp))
                                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         msg.attachments.forEach { att ->
-                                            val resolved = endpoints.resolveDashMediaUrl(
-                                                att.resolvedUrl ?: "/api/mc/media/messages/${msg.id}/${att.resolvedMediaId}",
+                                            val resolved = endpoints.mediaContentUrl(att.resolvedMediaId)
+                                            AsyncImage(
+                                                model = resolved,
+                                                contentDescription = "工单图片附件",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(96.dp)
+                                                    .clip(IgngTheme.radii.sm)
+                                                    .border(1.dp, colors.line, IgngTheme.radii.sm)
+                                                    .clickable { previewUrl = resolved },
                                             )
-                                            if (resolved != null) {
-                                                AsyncImage(
-                                                    model = resolved,
-                                                    contentDescription = "工单图片附件",
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .size(96.dp)
-                                                        .clip(IgngTheme.radii.sm)
-                                                        .border(1.dp, colors.line, IgngTheme.radii.sm)
-                                                        .clickable { previewUrl = resolved },
-                                                )
-                                            }
                                         }
                                     }
                                 }
@@ -417,7 +414,7 @@ fun TicketDetailScreen(
                                     pendingUploads.forEach { media ->
                                         Box(Modifier.size(56.dp)) {
                                             AsyncImage(
-                                                model = endpoints.resolveDashMediaUrl(media.previewUrl ?: media.publicUrl),
+                                                model = endpoints.mediaContentUrl(media.id),
                                                 contentDescription = "待发送图片",
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.fillMaxSize().clip(IgngTheme.radii.sm),
@@ -524,11 +521,12 @@ fun TicketDetailScreen(
                     scope.launch {
                         runCatching {
                             ticketRepository.updateTicket(
-                                t.id,
-                                UpdateTicketPayload(
+                                id = t.id,
+                                etag = t.etag,
+                                payload = UpdateTicketPayload(
                                     title = editTitle.trim(),
-                                    type = t.type,
-                                    targetNames = t.targets.map { it.mcUsername },
+                                    ticketType = t.type,
+                                    targets = t.targets.map { it.mcUsername },
                                     accessPolicy = t.accessPolicy,
                                 ),
                             )
@@ -722,7 +720,7 @@ fun CreateTicketScreen(
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         uploadedImages.forEach { img ->
                             AsyncImage(
-                                model = endpoints.resolveDashMediaUrl(img.previewUrl ?: img.publicUrl),
+                                model = endpoints.mediaContentUrl(img.id),
                                 contentDescription = "附件预览",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.size(64.dp).clip(IgngTheme.radii.sm),
@@ -744,13 +742,13 @@ fun CreateTicketScreen(
                                 ticketRepository.createTicket(
                                     CreateTicketPayload(
                                         title = title.trim(),
-                                        type = selectedType,
-                                        serverScope = if (selectedServerId == null) "ALL" else "SINGLE",
-                                        serverId = selectedServerId,
-                                        accessPolicy = options?.defaultAccessPolicy ?: TicketAccessPolicy(),
-                                        targetNames = selectedTargets.toList(),
                                         content = content.trim(),
-                                        attachments = uploadedImages.map { it.id },
+                                        ticketType = selectedType,
+                                        serverScope = if (selectedServerId == null) "all" else "specific",
+                                        serverId = selectedServerId?.let { V1Id.format("srv", it) },
+                                        targets = selectedTargets.toList(),
+                                        attachmentIds = uploadedImages.map { it.id },
+                                        accessPolicy = null,
                                     ),
                                 )
                             }.onSuccess { id ->

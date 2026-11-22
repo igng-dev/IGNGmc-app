@@ -18,11 +18,15 @@ android {
         applicationId = "net.igng.mcstatus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20000
-        versionName = "2.0.0"
+        versionCode = 20100
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        val apiBaseUrl = providers.gradleProperty("IGNG_API_BASE_URL")
+            .orElse("https://www.igng.net")
+            .get()
+            .trimEnd('/')
         val mcBaseUrl = providers.gradleProperty("IGNG_MC_BASE_URL")
             .orElse(providers.gradleProperty("MC_STATUS_BASE_URL"))
             .orElse("https://mc.igng.net")
@@ -42,7 +46,7 @@ android {
             .trimEnd('/')
         val wikiBaseUrl = providers.gradleProperty("IGNG_WIKI_BASE_URL")
             .orElse(providers.gradleProperty("WIKI_BASE_URL"))
-            .orElse("https://docs.igng.net")
+            .orElse("https://wiki.igng.net")
             .get()
             .trimEnd('/')
         val mapRelayUrl = providers.gradleProperty("IGNG_MAP_RELAY_URL")
@@ -50,6 +54,7 @@ android {
             .get()
             .trimEnd('/')
 
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "MC_BASE_URL", "\"$mcBaseUrl\"")
         buildConfigField("String", "DASH_BASE_URL", "\"$dashBaseUrl\"")
         buildConfigField("String", "SSO_BASE_URL", "\"$ssoBaseUrl\"")

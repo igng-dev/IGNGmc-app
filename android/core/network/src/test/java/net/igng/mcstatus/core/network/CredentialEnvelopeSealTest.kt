@@ -2,6 +2,7 @@ package net.igng.mcstatus.core.network
 
 import java.security.KeyPairGenerator
 import java.security.spec.MGF1ParameterSpec
+import java.time.Instant
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -15,20 +16,29 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class CredentialEnvelopeSealTest {
+    private val json = Json { ignoreUnknownKeys = true }
+
     @Test
-    fun sealsAndDecryptsWithSha256OaepAndAesGcmAad() {
+    fun sealsAndDecryptsV1IsoServerTimeAndSnakeCaseFields() {
         val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
         val spki = Base64.getEncoder().encodeToString(keyPair.public.encoded)
-        val challenge = CryptoChallenge(
-            nonce = "nonce-unit-test-1234",
-            publicKey = spki,
-            serverTime = 1763800000000L,
-        )
+        val raw = """
+            {
+              "nonce": "nonce-v1-iso-test-9999",
+              "alg": "RSA-OAEP-256+A256GCM",
+              "public_key": "$spki",
+              "server_time": "2026-11-22T12:00:00Z",
+              "ttl_ms": 60000
+            }
+        """.trimIndent()
+        val challenge = json.decodeFromString<CryptoChallenge>(raw)
 
         val sealed = CredentialEnvelopeSeal.seal(
             challenge = challenge,
-            fields = mapOf("oldField" to "alpha-sample", "newField" to "beta-sample"),
+            fields = mapOf("old_password" to "alpha-sample", "new_password" to "beta-sample"),
         )
+
+        assertEquals(Instant.parse("2026-11-22T12:00:00Z").toEpochMilli(), sealed.ts)
 
         val rsa = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
         rsa.init(
@@ -46,7 +56,7 @@ class CredentialEnvelopeSealTest {
         aes.updateAAD("${sealed.nonce}|${sealed.ts}".toByteArray(Charsets.UTF_8))
         val plaintext = String(aes.doFinal(Base64.getDecoder().decode(sealed.ct)), Charsets.UTF_8)
         val obj = Json.parseToJsonElement(plaintext).jsonObject
-        assertEquals("alpha-sample", obj["oldField"]?.jsonPrimitive?.content)
-        assertEquals("beta-sample", obj["newField"]?.jsonPrimitive?.content)
+        assertEquals("alpha-sample", obj["old_password"]?.jsonPrimitive?.content)
+        assertEquals("beta-sample", obj["new_password"]?.jsonPrimitive?.content)
     }
 }

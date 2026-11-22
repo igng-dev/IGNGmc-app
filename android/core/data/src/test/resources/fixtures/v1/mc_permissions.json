@@ -1,0 +1,59 @@
+{
+  "source": "luck_perms",
+  "accounts": [
+    {
+      "username": "Alice_CN",
+      "uuid": "4d9a2b0e-1111-2222-3333-444455556666",
+      "server_id": "srv_3",
+      "server_name": "生存服",
+      "found": true,
+      "primary_group": "player",
+      "prefix": "[玩家]",
+      "suffix": null,
+      "snapshot_published_at": "2026-11-22T12:00:00Z",
+      "groups": [
+        {
+          "name": "player",
+          "display_name": "普通玩家",
+          "prefix": "[玩家]",
+          "weight": 100,
+          "assignment": "direct",
+          "inherited_from": [],
+          "contexts": [
+            "global"
+          ],
+          "permissions": [
+            {
+              "node_key": "essentials.home",
+              "effect": "allow",
+              "contexts": [
+                "global"
+              ],
+              "expires_at": null
+            }
+          ]
+        }
+      ],
+      "independent_permissions": [
+        {
+          "node_key": "igng.fly",
+          "effect": "allow",
+          "contexts": [
+            "global"
+          ],
+          "expires_at": null
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "account_count": 1,
+    "identity_count": 1,
+    "group_count": 1,
+    "direct_group_count": 1,
+    "inherited_group_count": 0,
+    "group_permission_count": 1,
+    "independent_permission_count": 1,
+    "permission_node_count": 2
+  }
+}

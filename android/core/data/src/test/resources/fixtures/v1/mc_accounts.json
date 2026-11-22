@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "account_id": "mca_128",
+      "username": "Alice_CN",
+      "uuid": "4d9a2b0e-1111-2222-3333-444455556666",
+      "is_public": true,
+      "bound_at": "2026-09-01T10:00:00Z",
+      "last_login_at": null,
+      "is_banned": null,
+      "is_muted": null,
+      "login_history_available": false,
+      "penalty_history_available": false
+    }
+  ]
+}
