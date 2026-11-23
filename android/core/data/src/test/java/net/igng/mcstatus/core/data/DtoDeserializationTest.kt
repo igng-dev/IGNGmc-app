@@ -34,7 +34,7 @@ class DtoDeserializationTest {
     @Test
     fun decodesBootstrapAndOAuthTokenFixtures() {
         val boot = json.decodeFromString<BootstrapResponse>(fixture("bootstrap.json"))
-        assertEquals("1.15", boot.apiVersion)
+        assertEquals("1.16", boot.apiVersion)
         assertEquals("https://www.igng.net", boot.urls.apiBaseUrl)
         assertTrue(boot.features.loginHistory.available)
         assertTrue(boot.features.penaltyHistory.available)
@@ -70,8 +70,20 @@ class DtoDeserializationTest {
         val family = catalog.families.first()
         assertEquals("survival", family.slug)
         assertEquals(3, family.primarySeason?.serverId)
+        assertEquals("Dominion 领地插件", family.primarySeason?.plugins?.first()?.label)
+        assertEquals("https://dominion.lunadeer.cn/", family.primarySeason?.plugins?.first()?.href)
+        assertEquals("885647215", family.primarySeason?.plugins?.getOrNull(1)?.value)
+        assertEquals("主世界", family.primarySeason?.worlds?.first()?.label)
+        assertEquals("world", family.primarySeason?.worlds?.first()?.world)
         assertTrue(family.allKnownSeasons.isNotEmpty())
         assertEquals(1, catalog.servers.size)
+
+        // Legacy string arrays remain backwards-compatible
+        val legacySeason = json.decodeFromString<ServerSeasonDto>(
+            """{"slug":"legacy","plugins":["OneWayVault"],"worlds":["world"]}""",
+        )
+        assertEquals("OneWayVault", legacySeason.plugins.first().label)
+        assertEquals("world", legacySeason.worlds.first().world)
 
         val motd = json.decodeFromString<MotdResponse>(fixture("server_motd.json"))
         assertEquals("srv_3", motd.serverId)
@@ -86,14 +98,19 @@ class DtoDeserializationTest {
         assertEquals("srv_3", srv.resolvedServerId)
         assertEquals(18, srv.onlinePlayers)
         assertEquals(19.95, srv.tps ?: 0.0, 0.001)
+        assertEquals(0.5, srv.packetLossPct ?: 0.0, 0.001)
 
         val history = json.decodeFromString<PublicStatusHistoryResponse>(fixture("status_history.json"))
         assertEquals(15, history.bucketMinutes)
         val series = history.seriesFor(3)
         assertNotNull(series)
         assertEquals(1, series?.latencies?.size)
+        assertEquals(0.5, series?.latencies?.first()?.packet_loss_pct ?: 0.0, 0.001)
         assertEquals(1, series?.performance?.size)
+        assertEquals(18, series?.performance?.first()?.online_players)
         assertEquals(1, series?.statusGrid?.size)
+        assertEquals("good", series?.statusGrid?.first()?.status)
+        assertTrue(series?.statusGrid?.first()?.coverageLabel?.startsWith("正常") == true)
     }
 
     @Test
@@ -176,8 +193,28 @@ class DtoDeserializationTest {
 
         val perfect = json.decodeFromString<PublicPerfectRosterResponse>(fixture("perfect_public.json"))
         assertEquals(5, perfect.total)
+        assertEquals(5, perfect.resolvedTotal)
         assertEquals(1, perfect.members.size)
         assertEquals(1024, perfect.members.first().igngId)
+        assertEquals("No.001", perfect.members.first().memberNoLabel)
+        assertEquals("优秀建筑", perfect.members.first().qualificationLabel)
+        assertEquals("增加可用领地数量", perfect.benefits.first().summary)
+        assertEquals("lands", perfect.rules.first().benefit)
+        assertTrue(perfect.rules.first().text.isNotBlank())
+        assertEquals("building", perfect.criteria.first().key)
+        assertEquals("优秀建筑", perfect.criteria.first().title)
+
+        // Personal perfect supports both object rules/criteria and legacy string arrays
+        val personalPerfect = json.decodeFromString<PersonalPerfectResponse>(
+            """{"has_perfect":true,"holders":[{"username":"Alice_CN","is_holder":true,"member_no_label":"No.001"}],"rules":[{"benefit":"lands","text":"合规建领地"},"遵守规范"],"criteria":[{"key":"building","title":"建筑","text":"原创"},"活跃"]}""",
+        )
+        assertTrue(personalPerfect.hasPerfect)
+        assertEquals(2, personalPerfect.rules.size)
+        assertEquals("合规建领地", personalPerfect.rules[0].text)
+        assertEquals("遵守规范", personalPerfect.rules[1].text)
+        assertEquals(2, personalPerfect.criteria.size)
+        assertEquals("建筑", personalPerfect.criteria[0].title)
+        assertEquals("活跃", personalPerfect.criteria[1].text)
     }
 
     @Test
@@ -188,6 +225,7 @@ class DtoDeserializationTest {
         assertEquals("主城东门修好了", sources.servers.first().lastPreview)
         assertEquals(2, sources.qqGroups.size)
         assertEquals("123456789", sources.qqGroups.first().id)
+        assertEquals("https://p.qlogo.cn/gh/123456789/123456789/100", sources.qqGroups.first().avatarUrl)
         assertEquals(420, sources.qqGroups.first().messageCount)
         assertEquals("wechat", sources.qqGroups[1].platform)
         assertEquals("https://img.igng.net/avatars/wx-group.webp", sources.qqGroups[1].avatarUrl)
@@ -201,6 +239,8 @@ class DtoDeserializationTest {
         assertEquals("yunying", messages.persona?.id)
         assertEquals(1024, messages.senderProfiles["qq:10001"]?.igngId)
         assertEquals("云萤 Pro", messages.senderProfiles["qq:10001"]?.badges?.firstOrNull()?.label)
+        assertEquals("https://wx.qlogo.cn/mmhead/ver_1/sample/0", messages.senderProfiles["wechat:700000000000101"]?.avatarUrl)
+        assertEquals("/api/v1/mc/avatars/Alice_CN?size=64", messages.senderProfiles["player:alice_cn"]?.avatarUrl)
         val msg = messages.messages.first()
         assertEquals("qq-90001", msg.id)
         assertEquals("Alice", msg.player_name)

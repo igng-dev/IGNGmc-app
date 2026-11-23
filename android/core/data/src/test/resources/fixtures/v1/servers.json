@@ -48,13 +48,28 @@
           "禁止外挂"
         ],
         "plugins": [
-          "OneWayVault",
-          "LuckPerms"
+          {
+            "label": "Dominion 领地插件",
+            "href": "https://dominion.lunadeer.cn/"
+          },
+          {
+            "label": "加入交流群",
+            "value": "885647215"
+          }
         ],
         "worlds": [
-          "world",
-          "world_nether",
-          "world_the_end"
+          [
+            "主世界",
+            "world"
+          ],
+          [
+            "下界",
+            "world_nether"
+          ],
+          [
+            "末地",
+            "world_the_end"
+          ]
         ],
         "command": "/server survival",
         "cpu_model": "AMD EPYC",
@@ -102,13 +117,28 @@
             "禁止外挂"
           ],
           "plugins": [
-            "OneWayVault",
-            "LuckPerms"
+            {
+              "label": "Dominion 领地插件",
+              "href": "https://dominion.lunadeer.cn/"
+            },
+            {
+              "label": "加入交流群",
+              "value": "885647215"
+            }
           ],
           "worlds": [
-            "world",
-            "world_nether",
-            "world_the_end"
+            [
+              "主世界",
+              "world"
+            ],
+            [
+              "下界",
+              "world_nether"
+            ],
+            [
+              "末地",
+              "world_the_end"
+            ]
           ],
           "command": "/server survival",
           "cpu_model": "AMD EPYC",
@@ -157,13 +187,28 @@
             "禁止外挂"
           ],
           "plugins": [
-            "OneWayVault",
-            "LuckPerms"
+            {
+              "label": "Dominion 领地插件",
+              "href": "https://dominion.lunadeer.cn/"
+            },
+            {
+              "label": "加入交流群",
+              "value": "885647215"
+            }
           ],
           "worlds": [
-            "world",
-            "world_nether",
-            "world_the_end"
+            [
+              "主世界",
+              "world"
+            ],
+            [
+              "下界",
+              "world_nether"
+            ],
+            [
+              "末地",
+              "world_the_end"
+            ]
           ],
           "command": "/server survival",
           "cpu_model": "AMD EPYC",

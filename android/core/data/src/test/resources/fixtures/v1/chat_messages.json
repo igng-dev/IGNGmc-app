@@ -88,6 +88,32 @@
       ],
       "relationship": null,
       "luckperms_groups": []
+    },
+    "wechat:700000000000101": {
+      "bound": false,
+      "igng_id": null,
+      "user_id": null,
+      "igng_nickname": null,
+      "igng_username": null,
+      "display_name": "微信用户",
+      "avatar_url": "https://wx.qlogo.cn/mmhead/ver_1/sample/0",
+      "badges": [],
+      "relationship": null,
+      "luckperms_groups": []
+    },
+    "player:alice_cn": {
+      "bound": true,
+      "igng_id": 1024,
+      "user_id": "usr_1024",
+      "igng_nickname": "Alice",
+      "igng_username": "alice",
+      "display_name": "Alice_CN",
+      "avatar_url": "/api/v1/mc/avatars/Alice_CN?size=64",
+      "badges": [],
+      "relationship": null,
+      "luckperms_groups": [
+        "perfect"
+      ]
     }
   },
   "persona": {

@@ -39,7 +39,7 @@
       "cpu_usage": 32.5,
       "memory_usage_mb": 12400,
       "ping_ms": 24.5,
-      "packet_loss_pct": 0,
+      "packet_loss_pct": 0.5,
       "ping_status": "healthy",
       "ping_freshness": "fresh",
       "last_checked_at": "2026-11-22T12:00:00Z",

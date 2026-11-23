@@ -67,8 +67,9 @@ class ExploreRepository(
 ) {
     suspend fun fetchHomeFamilies(): List<ServerFamilyDto> {
         val raw = api.get("${endpoints.api}/api/v1/mc/servers", allowAnonymousFallback = true)
+        val decoded = json.decodeFromString<HomeServersResponse>(raw).families
         cache.write("home_families_v1", raw)
-        return json.decodeFromString<HomeServersResponse>(raw).families
+        return decoded
     }
 
     suspend fun readCachedFamilies(): List<ServerFamilyDto> =
@@ -210,27 +211,11 @@ class ChatRepository(
         val safeExt = extension.lowercase().replace(Regex("[^a-z0-9]"), "").ifBlank { "bin" }
         val target = File(mediaDir, "$safeKey.$safeExt")
         if (target.exists() && target.length() > 0L) return@withContext target
-
-        val request = okhttp3.Request.Builder()
-            .url(resolvedUrl)
-            .header("Accept", "*/*")
-            .get()
-            .build()
-        api.okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IllegalStateException("媒体读取失败（HTTP ${response.code}）")
-            }
-            val body = response.body ?: throw IllegalStateException("媒体响应为空")
-            val tmp = File(mediaDir, "$safeKey.$safeExt.tmp")
-            body.byteStream().use { input ->
-                tmp.outputStream().use { output -> input.copyTo(output) }
-            }
-            if (!tmp.renameTo(target)) {
-                tmp.copyTo(target, overwrite = true)
-                tmp.delete()
-            }
-        }
-        target
+        api.downloadToFile(
+            url = resolvedUrl,
+            targetFile = target,
+            allowAnonymousFallback = true,
+        )
     }
 }
 
@@ -245,8 +230,9 @@ class WikiRepository(
             .addQueryParameter("kb", kb)
             .build().toString()
         val raw = api.get(url, allowAnonymousFallback = true)
+        val decoded = json.decodeFromString<WikiCatalogResponse>(raw)
         cache.write("wiki_catalog_v1_$kb", raw)
-        return json.decodeFromString(raw)
+        return decoded
     }
 
     suspend fun readCachedCatalog(kb: String = "IGNGmc"): WikiCatalogResponse? =
@@ -259,8 +245,9 @@ class WikiRepository(
             .addQueryParameter("kb", kb)
             .build().toString()
         val raw = api.get(url, allowAnonymousFallback = true)
+        val decoded = json.decodeFromString<WikiPageResponse>(raw).page
         cache.write("wiki_page_v1_${kb}_$pageId", raw)
-        return json.decodeFromString<WikiPageResponse>(raw).page
+        return decoded
     }
 
     suspend fun readCachedPage(pageId: Int, kb: String = "IGNGmc"): WikiPageDetail? =
