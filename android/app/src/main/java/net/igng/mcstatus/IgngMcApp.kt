@@ -62,6 +62,7 @@ import net.igng.mcstatus.core.model.SessionAuthStatus
 import net.igng.mcstatus.feature.admin.AdminPocketConsoleScreen
 import net.igng.mcstatus.feature.chat.ChatConversationScreen
 import net.igng.mcstatus.feature.chat.ChatSessionListScreen
+import net.igng.mcstatus.feature.chat.CommunityChannelsScreen
 import net.igng.mcstatus.feature.explore.CommunityHallScreen
 import net.igng.mcstatus.feature.explore.ExploreScreen
 import net.igng.mcstatus.feature.explore.GlobalSearchScreen
@@ -316,6 +317,13 @@ fun IgngMcApp(
                                     ),
                                 )
                             },
+                            onOpenCommunityChannels = { navController.navigate(AppRoute.CommunityChannels) },
+                        )
+                    }
+
+                    composable<AppRoute.CommunityChannels> {
+                        CommunityChannelsScreen(
+                            onBack = { navController.popBackStack() },
                         )
                     }
 

@@ -12,8 +12,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,16 +29,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Explore
-import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups
-import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.Map
-import androidx.compose.material.icons.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.WorkspacePremium
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,13 +48,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import net.igng.mcstatus.core.auth.CustomTabsLauncher
 import net.igng.mcstatus.core.data.ExploreRepository
 import net.igng.mcstatus.core.data.PublicServerStatusDto
 import net.igng.mcstatus.core.data.ServerFamilyDto
@@ -83,17 +74,14 @@ import net.igng.mcstatus.core.designsystem.IgngSectionHeader
 import net.igng.mcstatus.core.designsystem.IgngServerBackdropCanvas
 import net.igng.mcstatus.core.designsystem.IgngStateBlock
 import net.igng.mcstatus.core.designsystem.IgngTheme
-import net.igng.mcstatus.core.designsystem.IgngTile
 import net.igng.mcstatus.core.designsystem.igngStaggeredReveal
 import net.igng.mcstatus.core.designsystem.rememberIgngHaptics
 import net.igng.mcstatus.core.designsystem.serverFamilyVisual
 import net.igng.mcstatus.core.model.IgngFormatters
-import net.igng.mcstatus.core.model.IgngSocialChannels
 import net.igng.mcstatus.core.model.SavedAccount
 import net.igng.mcstatus.core.model.ServerThemeKey
 import net.igng.mcstatus.core.model.SessionAuthStatus
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ExploreScreen(
     exploreRepository: ExploreRepository,
@@ -112,7 +100,6 @@ fun ExploreScreen(
     val scope = rememberCoroutineScope()
     val colors = IgngTheme.colors
     val haptic = rememberIgngHaptics()
-    val context = LocalContext.current
 
     var families by remember { mutableStateOf<List<ServerFamilyDto>>(emptyList()) }
     var statuses by remember { mutableStateOf<List<PublicServerStatusDto>>(emptyList()) }
@@ -452,136 +439,6 @@ fun ExploreScreen(
                                 onClick = { selectedFamily?.let(onOpenFamilyDetail) ?: onOpenStatusWall() },
                                 modifier = Modifier.weight(1f).igngStaggeredReveal(5),
                             )
-                        }
-                    }
-                }
-
-                // 6. Official QQ Groups & Community Channels (migrated from Chat tab)
-                item(key = "socialChannels") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        IgngSectionHeader(
-                            title = "官方交流群与社区",
-                            subtitle = "点击群号一键复制，或前往官方社区平台",
-                        )
-
-                        // Merged compact QQ groups card
-                        IgngTile(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .igngStaggeredReveal(6),
-                            contentPadding = PaddingValues(14.dp),
-                        ) {
-                            IgngSocialChannels.qqGroups.forEachIndexed { idx, group ->
-                                if (idx > 0) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(vertical = 12.dp),
-                                        thickness = 1.dp,
-                                        color = colors.line,
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = group.label,
-                                        style = IgngTheme.type.cardTitle,
-                                        color = colors.textPrimary,
-                                    )
-                                    IgngBadge(group.badge, tone = IgngBadgeTone.Accent)
-                                }
-                                Spacer(Modifier.height(5.dp))
-                                Text(
-                                    text = group.summary,
-                                    style = IgngTheme.type.caption,
-                                    color = colors.textSecondary,
-                                )
-                                if (group.highlights.isNotEmpty()) {
-                                    Spacer(Modifier.height(8.dp))
-                                    FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                                    ) {
-                                        group.highlights.forEach { tag ->
-                                            IgngBadge(tag, tone = IgngBadgeTone.Neutral)
-                                        }
-                                    }
-                                }
-                                group.copyValue?.let { num ->
-                                    Spacer(Modifier.height(10.dp))
-                                    IgngCopyPill(
-                                        value = num,
-                                        label = "群号 $num",
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                            }
-                        }
-
-                        // Compact external community platforms row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            IgngSocialChannels.externalChannels.forEachIndexed { idx, ch ->
-                                val (icon, tint, shortTitle) = when (ch.key) {
-                                    "mc-discord" -> Triple(Icons.Rounded.HeadsetMic, Color(0xFF5865F2), "Discord")
-                                    "bilibili-official" -> Triple(Icons.Rounded.PlayCircle, Color(0xFFFB7299), "B站官方")
-                                    else -> Triple(Icons.Rounded.Forum, colors.accent, "BBS 论坛")
-                                }
-                                val shortDesc = ch.highlights.take(2).joinToString(" · ")
-                                    .ifBlank { ch.badge }
-                                IgngInteractiveTile(
-                                    onClick = {
-                                        ch.url?.let { url ->
-                                            CustomTabsLauncher.openExternalUrl(context, url, colors.isDark)
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .igngStaggeredReveal(7 + idx),
-                                    contentPadding = PaddingValues(12.dp),
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(30.dp)
-                                                .clip(IgngTheme.radii.sm)
-                                                .background(tint.copy(alpha = if (colors.isDark) 0.2f else 0.12f)),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
-                                        }
-                                        Icon(
-                                            imageVector = Icons.Rounded.OpenInNew,
-                                            contentDescription = "外部打开",
-                                            tint = colors.textMuted,
-                                            modifier = Modifier.size(13.dp),
-                                        )
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    Text(
-                                        text = shortTitle,
-                                        style = IgngTheme.type.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = colors.textPrimary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        text = shortDesc,
-                                        style = IgngTheme.type.badge,
-                                        color = colors.textSecondary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
                         }
                     }
                 }

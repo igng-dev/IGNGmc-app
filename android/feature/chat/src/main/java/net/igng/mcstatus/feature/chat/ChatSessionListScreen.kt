@@ -80,6 +80,7 @@ fun ChatSessionListScreen(
     bottomPadding: PaddingValues,
     onSignIn: () -> Unit,
     onOpenSession: (ChatSessionItem) -> Unit,
+    onOpenCommunityChannels: () -> Unit,
 ) {
     val colors = IgngTheme.colors
     val semantic = chatSemanticColors(colors.isDark)
@@ -145,16 +146,44 @@ fun ChatSessionListScreen(
                     else -> "社区跨平台实时聊天档案"
                 },
                 actions = {
+                    Row(
+                        modifier = Modifier
+                            .clip(IgngTheme.radii.pill)
+                            .background(colors.tile)
+                            .border(1.dp, colors.lineStrong, IgngTheme.radii.pill)
+                            .clickable {
+                                haptic(IgngHapticKind.Tap)
+                                onOpenCommunityChannels()
+                            }
+                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Groups,
+                            contentDescription = "官方交流群与社区",
+                            tint = colors.accent,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = "交流群",
+                            style = IgngTheme.type.badge.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.textPrimary,
+                            maxLines = 1,
+                        )
+                    }
                     IconButton(
                         onClick = {
                             haptic(IgngHapticKind.Tick)
                             scope.launch { loadSources(isRefresh = true) }
                         },
+                        modifier = Modifier.size(34.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Refresh,
                             contentDescription = "刷新会话列表",
                             tint = colors.textSecondary,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 },
