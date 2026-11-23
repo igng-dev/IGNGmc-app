@@ -1,0 +1,343 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '发布 tag（留空则自动取 android/app/build.gradle.kts 的 v<versionName>）'
+        required: false
+        default: ''
+        type: string
+      prerelease:
+        description: '是否标记为预发布（prerelease）'
+        required: false
+        default: false
+        type: boolean
+      draft:
+        description: '是否保存为草稿（draft）'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: '仅在云端完成签名构建与全套验签校验，不创建 tag 或发布 Release'
+        required: false
+        default: false
+        type: boolean
+      notes:
+        description: '可选：补充发布说明（留空则自动汇总 PR 变更）'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Sign & Publish Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: 隐私与脚本语法检查
+        run: |
+          set -euo pipefail
+          bash scripts/check-privacy.sh --all
+          sh -n scripts/check-privacy.sh
+          sh -n .githooks/pre-commit
+          bash -n .githooks/pre-push
+
+      - name: 校验发布参数、版本号一致性与 Release 不可变保护
+        id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          INPUT_DRAFT: ${{ inputs.draft }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAS_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAS_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+
+          if [ "$HAS_KEYSTORE" != "true" ] || [ "$HAS_STORE_PASS" != "true" ] || [ "$HAS_KEY_ALIAS" != "true" ] || [ "$HAS_KEY_PASS" != "true" ]; then
+            echo "::error::缺少签名 Secrets（需要 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD）"
+            exit 1
+          fi
+
+          VERSION_NAME=$(awk -F'"' '/^[[:space:]]*versionName[[:space:]]*=/ { print $2; exit }' android/app/build.gradle.kts)
+          VERSION_CODE=$(awk '/^[[:space:]]*versionCode[[:space:]]*=/ { gsub(/[^0-9]/, "", $NF); print $NF; exit }' android/app/build.gradle.kts)
+          CLIENT_VERSION=$(awk -F'"' '/const val DEFAULT_CLIENT_VERSION[[:space:]]*=/ { print $2; exit }' android/core/network/src/main/java/net/igng/mcstatus/core/network/IgngHttpClient.kt)
+
+          if [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ] || [ -z "$CLIENT_VERSION" ]; then
+            echo "::error::无法解析 versionName ($VERSION_NAME) / versionCode ($VERSION_CODE) / DEFAULT_CLIENT_VERSION ($CLIENT_VERSION)"
+            exit 1
+          fi
+
+          if [ "$VERSION_NAME" != "$CLIENT_VERSION" ]; then
+            echo "::error::android/app/build.gradle.kts versionName ($VERSION_NAME) 与 IgngHttpClientFactory.DEFAULT_CLIENT_VERSION ($CLIENT_VERSION) 不一致"
+            exit 1
+          fi
+
+          DRY_RUN="false"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${INPUT_DRY_RUN}" = "true" ]; then
+            DRY_RUN="true"
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            PRERELEASE="false"
+            case "$TAG" in
+              *-*) PRERELEASE="true" ;;
+            esac
+            DRAFT="false"
+          else
+            TAG="${INPUT_TAG}"
+            if [ -z "$TAG" ]; then
+              TAG="v${VERSION_NAME}"
+            fi
+            PRERELEASE="${INPUT_PRERELEASE:-false}"
+            DRAFT="${INPUT_DRAFT:-false}"
+            if [ "$DRY_RUN" != "true" ] && [ "${GITHUB_REF}" != "refs/heads/main" ] && [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+              echo "::error::正式发布只能从 main 分支或 tag 触发（当前 ref=${GITHUB_REF}）；如仅测试构建请勾选 dry_run"
+              exit 1
+            fi
+          fi
+
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::非法 tag 格式：$TAG（应形如 v2.3.3 或 v2.4.0-beta.1）"
+            exit 1
+          fi
+
+          EXPECTED_VERSION="${TAG#v}"
+          if [ "$VERSION_NAME" != "$EXPECTED_VERSION" ]; then
+            echo "::error::tag ($TAG) 与 android/app/build.gradle.kts 的 versionName ($VERSION_NAME) 不一致；请先通过 PR 递增 versionCode 与 versionName"
+            exit 1
+          fi
+
+          if [ "$DRY_RUN" != "true" ]; then
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "::error::Release $TAG 已存在，按 Release 不可变保护禁止覆盖或替换已有资产"
+              exit 1
+            fi
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              EXISTING_TAG_SHA=$(git rev-list -n 1 "refs/tags/$TAG" 2>/dev/null || true)
+              if [ -n "$EXISTING_TAG_SHA" ] && [ "$EXISTING_TAG_SHA" != "${GITHUB_SHA}" ]; then
+                echo "::error::远端已存在指向其他提交的 tag $TAG ($EXISTING_TAG_SHA != ${GITHUB_SHA})，禁止移动已有 tag"
+                exit 1
+              fi
+            fi
+          fi
+
+          SHORT_SHA=$(git rev-parse --short "${GITHUB_SHA}")
+          {
+            echo "tag=$TAG"
+            echo "version_name=$VERSION_NAME"
+            echo "version_code=$VERSION_CODE"
+            echo "short_sha=$SHORT_SHA"
+            echo "prerelease=$PRERELEASE"
+            echo "draft=$DRAFT"
+            echo "dry_run=$DRY_RUN"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved release metadata: tag=$TAG versionName=$VERSION_NAME versionCode=$VERSION_CODE commit=$SHORT_SHA dry_run=$DRY_RUN"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 解码签名密钥到临时目录（不进入工作区）
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="${RUNNER_TEMP}/igngmc-release.keystore"
+          printf '%s' "$KEYSTORE_B64" | tr -d '\r\n ' | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+
+      - name: 单元测试
+        working-directory: android
+        run: sh ./gradlew testDebugUnitTest --no-daemon
+
+      - name: 构建正式签名 release APK
+        working-directory: android
+        env:
+          IGNG_REQUIRE_RELEASE_SIGNING: "true"
+          ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/igngmc-release.keystore
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: sh ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: 校验签名、证书指纹、包信息并生成 SHA-256
+        id: verify_apk
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          EXPECTED_VERSION_NAME: ${{ steps.meta.outputs.version_name }}
+          EXPECTED_VERSION_CODE: ${{ steps.meta.outputs.version_code }}
+          EXPECTED_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          BUILT_APK="android/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$BUILT_APK" ]; then
+            echo "::error::未找到已签名的 Release APK：$BUILT_APK"
+            exit 1
+          fi
+
+          DIST_DIR="${RUNNER_TEMP}/dist"
+          mkdir -p "$DIST_DIR"
+          ASSET_NAME="IGNGmc-${TAG}.apk"
+          FINAL_APK="${DIST_DIR}/${ASSET_NAME}"
+          cp "$BUILT_APK" "$FINAL_APK"
+
+          APK_SHA256=$(sha256sum "$FINAL_APK" | awk '{print $1}')
+          printf '%s  %s\n' "$APK_SHA256" "$ASSET_NAME" > "${FINAL_APK}.sha256"
+
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+
+          echo "=== apksigner verify ==="
+          SIGNER_OUT=$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$FINAL_APK")
+          printf '%s\n' "$SIGNER_OUT"
+          CERT_SHA256=$(printf '%s\n' "$SIGNER_OUT" | awk '/certificate SHA-256 digest:/ { print tolower($NF); exit }')
+          if [ -z "$CERT_SHA256" ]; then
+            echo "::error::无法解析签名证书 SHA-256 摘要"
+            exit 1
+          fi
+
+          if [ -n "${EXPECTED_CERT_SHA256:-}" ]; then
+            NORM_EXPECTED=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':\r\n ' | tr 'A-Z' 'a-z')
+            if [ "$CERT_SHA256" != "$NORM_EXPECTED" ]; then
+              echo "::error::签名证书 SHA-256 不匹配（实际=$CERT_SHA256，期望=$NORM_EXPECTED），中止发布以保护覆盖升级链路"
+              exit 1
+            fi
+            echo "Signing certificate SHA-256 matches ANDROID_SIGNING_CERT_SHA256."
+          fi
+
+          echo "=== aapt2 dump badging ==="
+          BADGING_ALL=$("$BUILD_TOOLS/aapt2" dump badging "$FINAL_APK")
+          BADGING_LINE=$(printf '%s\n' "$BADGING_ALL" | awk '/^package:/ { print; exit }')
+          echo "$BADGING_LINE"
+          printf '%s\n' "$BADGING_LINE" | grep -q "name='net.igng.mcstatus'"
+          printf '%s\n' "$BADGING_LINE" | grep -q "versionCode='${EXPECTED_VERSION_CODE}'"
+          printf '%s\n' "$BADGING_LINE" | grep -q "versionName='${EXPECTED_VERSION_NAME}'"
+
+          {
+            echo "asset_name=$ASSET_NAME"
+            echo "apk_path=$FINAL_APK"
+            echo "sha_path=${FINAL_APK}.sha256"
+            echo "apk_sha256=$APK_SHA256"
+            echo "cert_sha256=$CERT_SHA256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 清理临时签名密钥
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/igngmc-release.keystore"
+
+      - name: 发布 GitHub Release 并上传 APK 与校验文件
+        if: steps.meta.outputs.dry_run != 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION_NAME: ${{ steps.meta.outputs.version_name }}
+          VERSION_CODE: ${{ steps.meta.outputs.version_code }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+          DRAFT: ${{ steps.meta.outputs.draft }}
+          CUSTOM_NOTES: ${{ inputs.notes }}
+          ASSET_NAME: ${{ steps.verify_apk.outputs.asset_name }}
+          APK_PATH: ${{ steps.verify_apk.outputs.apk_path }}
+          SHA_PATH: ${{ steps.verify_apk.outputs.sha_path }}
+          APK_SHA256: ${{ steps.verify_apk.outputs.apk_sha256 }}
+          CERT_SHA256: ${{ steps.verify_apk.outputs.cert_sha256 }}
+        run: |
+          set -euo pipefail
+          NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+          {
+            echo "## IGNGmc Android ${TAG}"
+            echo ""
+            if [ -n "${CUSTOM_NOTES}" ]; then
+              printf '%s\n\n' "${CUSTOM_NOTES}"
+            else
+              AUTO_NOTES=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+                -f tag_name="${TAG}" \
+                -f target_commitish="${GITHUB_SHA}" \
+                -q '.body' 2>/dev/null || true)
+              if [ -n "${AUTO_NOTES}" ]; then
+                printf '%s\n\n' "${AUTO_NOTES}"
+              fi
+            fi
+            cat <<EOF
+          ### 安装与升级说明
+
+          - 包名保持 \`net.igng.mcstatus\`，使用与既有正式版一致的发布签名证书，支持从旧版直接覆盖升级，无需卸载。
+          - 支持 Android 8.0（API 26）及以上系统。
+
+          ### 发布校验信息
+
+          - \`applicationId\`: \`net.igng.mcstatus\`
+          - \`versionCode\`: \`${VERSION_CODE}\`
+          - \`versionName\`: \`${VERSION_NAME}\`
+          - \`Commit\`: \`${SHORT_SHA}\`
+          - \`APK 文件名\`: \`${ASSET_NAME}\`
+          - \`APK SHA-256\`: \`${APK_SHA256}\`
+          - \`签名证书 SHA-256\`: \`${CERT_SHA256}\`
+          EOF
+          } > "$NOTES_FILE"
+
+          ARGS=(
+            "$TAG"
+            "$APK_PATH"
+            "$SHA_PATH"
+            --title "IGNGmc ${TAG}"
+            --notes-file "$NOTES_FILE"
+          )
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            ARGS+=(--target "${GITHUB_SHA}")
+          else
+            ARGS+=(--verify-tag)
+          fi
+          if [ "${PRERELEASE}" = "true" ]; then
+            ARGS+=(--prerelease --latest=false)
+          else
+            ARGS+=(--latest)
+          fi
+          if [ "${DRAFT}" = "true" ]; then
+            ARGS+=(--draft)
+          fi
+
+          gh release create "${ARGS[@]}"
+
+      - name: 输出构建摘要
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          DRY_RUN: ${{ steps.meta.outputs.dry_run }}
+          ASSET_NAME: ${{ steps.verify_apk.outputs.asset_name }}
+          APK_SHA256: ${{ steps.verify_apk.outputs.apk_sha256 }}
+          CERT_SHA256: ${{ steps.verify_apk.outputs.cert_sha256 }}
+        run: |
+          {
+            echo "### IGNGmc Release 构建结果"
+            echo "- Tag: \`${TAG}\`"
+            echo "- 模式: \`$( [ "$DRY_RUN" = "true" ] && echo "dry-run（未发布 Release）" || echo "正式发布" )\`"
+            echo "- APK: \`${ASSET_NAME}\`"
+            echo "- APK SHA-256: \`${APK_SHA256}\`"
+            echo "- 签名证书 SHA-256: \`${CERT_SHA256}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

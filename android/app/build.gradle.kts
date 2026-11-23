@@ -1,14 +1,28 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
 
-val signingProperties = Properties()
-val signingFile = rootProject.file("keystore/keystore.properties")
-if (signingFile.exists()) signingFile.inputStream().use(signingProperties::load)
+fun signingCredential(name: String): String? =
+    providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingCredential("ANDROID_SIGNING_STORE_FILE")
+val releaseStorePassword = signingCredential("ANDROID_SIGNING_STORE_PASSWORD")
+val releaseKeyAlias = signingCredential("ANDROID_SIGNING_KEY_ALIAS")
+val releaseKeyPassword = signingCredential("ANDROID_SIGNING_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+val requireReleaseSigning = signingCredential("IGNG_REQUIRE_RELEASE_SIGNING")
+    ?.equals("true", ignoreCase = true) == true
+if (requireReleaseSigning && !hasReleaseSigning) {
+    throw GradleException("Release signing is required (IGNG_REQUIRE_RELEASE_SIGNING=true) but signing credentials are missing.")
+}
 
 android {
     namespace = "net.igng.mcstatus"
@@ -27,8 +41,11 @@ android {
             .orElse("https://www.igng.net")
             .get()
             .trimEnd('/')
+        val ssoBaseUrl = providers.gradleProperty("IGNG_SSO_BASE_URL")
+            .orElse("https://sso.igng.net")
+            .get()
+            .trimEnd('/')
         val mcBaseUrl = providers.gradleProperty("IGNG_MC_BASE_URL")
-            .orElse(providers.gradleProperty("MC_STATUS_BASE_URL"))
             .orElse("https://mc.igng.net")
             .get()
             .trimEnd('/')
@@ -36,43 +53,34 @@ android {
             .orElse("https://dash.igng.net")
             .get()
             .trimEnd('/')
-        val ssoBaseUrl = providers.gradleProperty("IGNG_SSO_BASE_URL")
-            .orElse("https://sso.igng.net")
-            .get()
-            .trimEnd('/')
         val chatBaseUrl = providers.gradleProperty("IGNG_CHAT_BASE_URL")
             .orElse("https://chat.igng.net")
             .get()
             .trimEnd('/')
-        val wikiBaseUrl = providers.gradleProperty("IGNG_WIKI_BASE_URL")
-            .orElse(providers.gradleProperty("WIKI_BASE_URL"))
-            .orElse("https://wiki.igng.net")
-            .get()
-            .trimEnd('/')
-        val mapRelayUrl = providers.gradleProperty("IGNG_MAP_RELAY_URL")
-            .orElse("https://map-api.igng.net")
-            .get()
-            .trimEnd('/')
 
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "SSO_BASE_URL", "\"$ssoBaseUrl\"")
         buildConfigField("String", "MC_BASE_URL", "\"$mcBaseUrl\"")
         buildConfigField("String", "DASH_BASE_URL", "\"$dashBaseUrl\"")
-        buildConfigField("String", "SSO_BASE_URL", "\"$ssoBaseUrl\"")
         buildConfigField("String", "CHAT_BASE_URL", "\"$chatBaseUrl\"")
-        buildConfigField("String", "WIKI_BASE_URL", "\"$wikiBaseUrl\"")
-        buildConfigField("String", "MAP_RELAY_URL", "\"$mapRelayUrl\"")
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (signingProperties.isNotEmpty()) {
-                signingConfig = signingConfigs.create("release") {
-                    storeFile = rootProject.file("keystore/${signingProperties.getProperty("storeFile")}")
-                    storePassword = signingProperties.getProperty("storePassword")
-                    keyAlias = signingProperties.getProperty("keyAlias")
-                    keyPassword = signingProperties.getProperty("keyPassword")
-                }
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

@@ -7,6 +7,8 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $tokenRegex = '(github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY)'
 $assignRegex = '(?i)(^|[^^])(password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]?key)\s*[:=]\s*("[^")][^"]{7,}"|''[^'')][^'']{7,}'')'
+$privateIpRegex = '(^|[^0-9.])(192\.168\.[0-9]{1,3}\.[0-9]{1,3}|10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3})([^0-9.]|$)'
+$absHomeRegex = '(/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\)'
 $badNames = @("local.properties", "keystore.properties", "release-signing.properties")
 $badExtensions = @(".jks", ".keystore", ".p12", ".pfx", ".pem", ".key", ".der", ".apk", ".aab")
 $binaryExtensions = @('.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.apk', '.aab', '.jar', '.class', '.bin', '.jks', '.keystore', '.p12', '.pfx', '.der')
@@ -36,8 +38,8 @@ foreach ($relativePath in $relativeFiles) {
         $violations += "forbidden env file: $relativePath"
         continue
     }
-    if ($normalizedPath -match '(^|/)keystore/') {
-        $violations += "forbidden keystore path: $relativePath"
+    if ($normalizedPath -match '(^|/)(keystore|signing)/') {
+        $violations += "forbidden signing/keystore path: $relativePath"
         continue
     }
     if ($extension -notin $binaryExtensions) {
@@ -52,6 +54,12 @@ foreach ($relativePath in $relativeFiles) {
             $violations += "secret token or private key header: $relativePath"
             continue
         }
+        if ($content -match $privateIpRegex) {
+            $violations += "private LAN IP address: $relativePath"
+        }
+        if ($content -match $absHomeRegex) {
+            $violations += "machine-specific home path: $relativePath"
+        }
         $isExample = ($fileName -like "*.example") -or ($fileName -like "*.example.*")
         if (-not $isExample -and $content -match $assignRegex) {
             $violations += "secret-like assignment: $relativePath"
@@ -64,5 +72,5 @@ if ($violations.Count -gt 0) {
     exit 1
 }
 
-$scope = if ($All) { 'tracked files' } elseif ($scanIndex) { 'staged files' } else { 'working tree files' }
-Write-Host "Privacy check passed: $($relativeFiles.Count) $scope checked."
+$scope = if ($All) { 'tracked' } elseif ($scanIndex) { 'staged' } else { 'working-tree' }
+Write-Host "Privacy check passed ($($relativeFiles.Count) $scope file(s) scanned)."

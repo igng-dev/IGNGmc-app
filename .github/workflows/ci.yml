@@ -26,28 +26,93 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: 隐私与凭据卫生检查
-        run: bash scripts/check-privacy.sh --all
+          fetch-depth: 0
+
+      - name: 隐私、脚本语法与版本号一致性检查
+        run: |
+          set -euo pipefail
+          bash scripts/check-privacy.sh --all
+          sh -n scripts/check-privacy.sh
+          sh -n .githooks/pre-commit
+          bash -n .githooks/pre-push
+
+          APP_VERSION=$(awk -F'"' '/^[[:space:]]*versionName[[:space:]]*=/ { print $2; exit }' android/app/build.gradle.kts)
+          CLIENT_VERSION=$(awk -F'"' '/const val DEFAULT_CLIENT_VERSION[[:space:]]*=/ { print $2; exit }' android/core/network/src/main/java/net/igng/mcstatus/core/network/IgngHttpClient.kt)
+          if [ -z "$APP_VERSION" ] || [ -z "$CLIENT_VERSION" ]; then
+            echo "::error::无法解析 versionName ($APP_VERSION) 或 DEFAULT_CLIENT_VERSION ($CLIENT_VERSION)"
+            exit 1
+          fi
+          if [ "$APP_VERSION" != "$CLIENT_VERSION" ]; then
+            echo "::error::版本号不一致：android/app/build.gradle.kts versionName=$APP_VERSION，但 IgngHttpClientFactory.DEFAULT_CLIENT_VERSION=$CLIENT_VERSION"
+            exit 1
+          fi
+          echo "Version consistency check passed: $APP_VERSION"
+
+      - name: 判定是否需要运行 Android 构建与单测
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "run_android=true" >> "$GITHUB_OUTPUT"
+            echo "workflow_dispatch: running full Android verification"
+            exit 0
+          fi
+
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_BASE_SHA" ]; then
+            CHANGED=$(git diff --name-only "$PR_BASE_SHA" HEAD)
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+            CHANGED=$(git diff --name-only "$PUSH_BEFORE" HEAD)
+          else
+            echo "run_android=true" >> "$GITHUB_OUTPUT"
+            echo "Fallback: running full Android verification"
+            exit 0
+          fi
+
+          if [ -z "$CHANGED" ]; then
+            echo "run_android=false" >> "$GITHUB_OUTPUT"
+            echo "No changed files detected; skipping Android build"
+            exit 0
+          fi
+
+          NON_DOC=$(printf '%s\n' "$CHANGED" | grep -Ev '\.md$' || true)
+          if [ -z "$NON_DOC" ]; then
+            echo "run_android=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only change detected; skipping Gradle build & tests"
+          else
+            echo "run_android=true" >> "$GITHUB_OUTPUT"
+            echo "Non-doc changes detected; running full Android verification"
+          fi
+
       - uses: actions/setup-java@v4
+        if: steps.changes.outputs.run_android == 'true'
         with:
           distribution: temurin
           java-version: "21"
+
       - uses: gradle/actions/setup-gradle@v4
-      - name: 剔除机器专属 SDK 路径（local.properties 不该进仓库）
-        run: |
-          cd "android"
-          if [ -f local.properties ] && git ls-files --error-unmatch local.properties >/dev/null 2>&1; then
-            echo "::warning file=local.properties::local.properties 被提交进仓库，CI 已临时删除；请把它加入 .gitignore"
-            rm -f local.properties
-          fi
+        if: steps.changes.outputs.run_android == 'true'
+
       - name: 构建 debug APK
+        if: steps.changes.outputs.run_android == 'true'
         working-directory: android
         run: sh ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: 构建未签名 release APK（校验 Release 编译）
+        if: steps.changes.outputs.run_android == 'true'
+        working-directory: android
+        run: sh ./gradlew assembleRelease --no-daemon --stacktrace
+
       - name: 单元测试
+        if: steps.changes.outputs.run_android == 'true'
         working-directory: android
         run: sh ./gradlew testDebugUnitTest --no-daemon
+
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: success() && steps.changes.outputs.run_android == 'true'
         with:
           name: debug-apk-${{ github.event.number || github.sha }}
           path: android/app/build/outputs/apk/debug/*.apk

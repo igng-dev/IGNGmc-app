@@ -24,10 +24,6 @@ data class SiteEndpoints(
     val dashBaseUrl: String = "https://dash.igng.net",
     val ssoBaseUrl: String = "https://sso.igng.net",
     val chatBaseUrl: String = "https://chat.igng.net",
-    val wikiBaseUrl: String = "https://wiki.igng.net",
-    val mapRelayUrl: String = "https://map-api.igng.net",
-    val bbsBaseUrl: String = "https://www.igngbbs.net",
-    val igngBaseUrl: String = "https://www.igng.net",
 ) {
     /** Unified first-party Client API v1 gateway (`https://www.igng.net`). */
     val api: String = apiBaseUrl.trimEnd('/')
@@ -36,10 +32,6 @@ data class SiteEndpoints(
     val dash: String = dashBaseUrl.trimEnd('/')
     val sso: String = ssoBaseUrl.trimEnd('/')
     val chat: String = chatBaseUrl.trimEnd('/')
-    val wiki: String = wikiBaseUrl.trimEnd('/')
-    val mapRelay: String = mapRelayUrl.trimEnd('/')
-    val bbs: String = bbsBaseUrl.trimEnd('/')
-    val igng: String = igngBaseUrl.trimEnd('/')
 
     /** Bearer tokens are ONLY attached to the unified v1 gateway and SSO origin. */
     fun trustedAuthHosts(): Set<String> = setOf(
@@ -77,10 +69,6 @@ data class SiteEndpoints(
         if (trimmed.startsWith("https://", ignoreCase = true)) return trimmed
         return "$api/${trimmed.trimStart('/')}"
     }
-
-    fun resolveDashMediaUrl(pathOrUrl: String?): String? = resolveApiMediaUrl(pathOrUrl)
-
-    fun resolveChatMediaUrl(pathOrUrl: String?): String? = resolveApiMediaUrl(pathOrUrl)
 
     fun snapshotMapUrls(seasonSlug: String): List<String> = listOf(
         "$mc/map-snapshots/$seasonSlug.webp",
