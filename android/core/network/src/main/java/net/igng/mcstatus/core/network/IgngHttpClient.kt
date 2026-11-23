@@ -75,7 +75,7 @@ class SingleFlightTokenRefresher(
 
 object IgngHttpClientFactory {
     const val CLIENT_ID = "igng_mc_android"
-    const val DEFAULT_CLIENT_VERSION = "2.3.1"
+    const val DEFAULT_CLIENT_VERSION = "2.3.2"
     internal const val SKIP_AUTH_HEADER = "X-Igng-Internal-Skip-Auth"
 
     fun create(
