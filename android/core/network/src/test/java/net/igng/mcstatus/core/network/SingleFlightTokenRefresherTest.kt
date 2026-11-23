@@ -2,9 +2,12 @@ package net.igng.mcstatus.core.network
 
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import net.igng.mcstatus.core.model.SiteEndpoints
 import okhttp3.MediaType.Companion.toMediaType
@@ -117,5 +120,138 @@ class SingleFlightTokenRefresherTest {
         val secondBody = api.get("${endpoints.api}/api/v1/mc/status", allowAnonymousFallback = true)
         assertEquals("""{"families":[]}""", secondBody)
         assertEquals(listOf("Bearer legacy-tok", null, null), seenAuthHeaders)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun business401DoesNotTriggerTokenRefreshOrSessionExpired() = runTest {
+        val refreshCount = AtomicInteger(0)
+        val notifier = SessionExpiredNotifier()
+        val emitted = mutableListOf<SessionExpiredEvent>()
+        val collectJob = launch(UnconfinedTestDispatcher(testScheduler)) {
+            notifier.events.collect { emitted.add(it) }
+        }
+        val endpoints = SiteEndpoints()
+        val mockOkHttp = IgngHttpClientFactory.create(
+            endpoints = endpoints,
+            tokenProvider = { "valid-access-tok" },
+        ).newBuilder()
+            .addInterceptor { chain ->
+                val req = chain.request()
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(401)
+                    .message("Unauthorized")
+                    .body(
+                        """{"error":{"code":"mc.password_invalid","message":"当前游戏密码错误"}}"""
+                            .toResponseBody("application/json".toMediaType()),
+                    )
+                    .build()
+            }
+            .build()
+
+        val refresher = SingleFlightTokenRefresher(
+            currentTokenProvider = { "valid-access-tok" },
+            refreshBlock = {
+                refreshCount.incrementAndGet()
+                TokenRefreshResult.Invalidated
+            },
+        )
+        val api = ApiClient(
+            okHttpClient = mockOkHttp,
+            sessionExpiredNotifier = notifier,
+            tokenRefresher = refresher,
+        )
+
+        var caught: ApiException? = null
+        try {
+            api.patch("${endpoints.api}/api/v1/mc/accounts/Steve", """{"credential":{}}""")
+        } catch (err: ApiException) {
+            caught = err
+        } finally {
+            collectJob.cancel()
+        }
+
+        assertEquals(401, caught?.statusCode)
+        assertEquals("mc.password_invalid", caught?.errorCode)
+        assertEquals(false, caught?.isSessionAuthFailure)
+        assertEquals(0, refreshCount.get())
+        assertTrue(emitted.isEmpty())
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun auth401TriggersRefreshAndNotifiesWhenInvalidated() = runTest {
+        val refreshCount = AtomicInteger(0)
+        val notifier = SessionExpiredNotifier()
+        val emitted = mutableListOf<SessionExpiredEvent>()
+        val collectJob = launch(UnconfinedTestDispatcher(testScheduler)) {
+            notifier.events.collect { emitted.add(it) }
+        }
+        val endpoints = SiteEndpoints()
+        val mockOkHttp = IgngHttpClientFactory.create(
+            endpoints = endpoints,
+            tokenProvider = { "expired-access-tok" },
+        ).newBuilder()
+            .addInterceptor { chain ->
+                val req = chain.request()
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(401)
+                    .message("Unauthorized")
+                    .body(
+                        """{"error":{"code":"auth.token_expired","message":"访问令牌已过期"}}"""
+                            .toResponseBody("application/json".toMediaType()),
+                    )
+                    .build()
+            }
+            .build()
+
+        val refresher = SingleFlightTokenRefresher(
+            currentTokenProvider = { "expired-access-tok" },
+            refreshBlock = {
+                refreshCount.incrementAndGet()
+                TokenRefreshResult.Invalidated
+            },
+        )
+        val api = ApiClient(
+            okHttpClient = mockOkHttp,
+            sessionExpiredNotifier = notifier,
+            tokenRefresher = refresher,
+        )
+
+        var caught: ApiException? = null
+        try {
+            api.get("${endpoints.api}/api/v1/mc/accounts")
+        } catch (err: ApiException) {
+            caught = err
+        } finally {
+            collectJob.cancel()
+        }
+
+        assertEquals(401, caught?.statusCode)
+        assertEquals("auth.token_expired", caught?.errorCode)
+        assertTrue(caught?.isSessionAuthFailure == true)
+        assertEquals(1, refreshCount.get())
+        assertEquals(1, emitted.size)
+    }
+
+    @Test
+    fun auth401IsRecognizedAsSessionAuthFailure() {
+        val expired = ApiException(401, "auth.token_expired", "访问令牌已过期")
+        val invalid = ApiException(401, "auth.token_invalid", "访问令牌无效")
+        val revoked = ApiException(401, "auth.session_revoked", "会话已被吊销")
+        val unknown = ApiException(401, null, "Unauthorized")
+        val wrongMcPassword = ApiException(401, "mc.password_invalid", "密码错误")
+        val wrongLoginCred = ApiException(401, "auth.credential_invalid", "账号或密码错误")
+
+        assertTrue(expired.isSessionAuthFailure)
+        assertTrue(invalid.isSessionAuthFailure)
+        assertTrue(revoked.isSessionAuthFailure)
+        assertTrue(unknown.isSessionAuthFailure)
+        assertEquals(false, wrongMcPassword.isSessionAuthFailure)
+        assertEquals(false, wrongLoginCred.isSessionAuthFailure)
     }
 }

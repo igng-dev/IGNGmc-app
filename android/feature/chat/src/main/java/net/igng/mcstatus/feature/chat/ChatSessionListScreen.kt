@@ -63,6 +63,7 @@ import net.igng.mcstatus.core.designsystem.IgngTheme
 import net.igng.mcstatus.core.designsystem.IgngTopBar
 import net.igng.mcstatus.core.designsystem.rememberIgngHaptics
 import net.igng.mcstatus.core.model.SavedAccount
+import net.igng.mcstatus.core.model.SessionAuthStatus
 import net.igng.mcstatus.core.model.SiteEndpoints
 
 /**
@@ -74,6 +75,8 @@ fun ChatSessionListScreen(
     endpoints: SiteEndpoints,
     chatRepository: ChatRepository,
     activeAccount: SavedAccount?,
+    sessionAuthStatus: SessionAuthStatus = if (activeAccount != null) SessionAuthStatus.ACTIVE else SessionAuthStatus.SIGNED_OUT,
+    sessionEpoch: Int = 0,
     bottomPadding: PaddingValues,
     onSignIn: () -> Unit,
     onOpenSession: (ChatSessionItem) -> Unit,
@@ -82,6 +85,8 @@ fun ChatSessionListScreen(
     val semantic = chatSemanticColors(colors.isDark)
     val scope = rememberCoroutineScope()
     val haptic = rememberIgngHaptics()
+    val sessionExpired = activeAccount != null && sessionAuthStatus.requiresReauth
+    val isAuthenticated = activeAccount != null && sessionAuthStatus == SessionAuthStatus.ACTIVE
 
     var sources by remember { mutableStateOf<ChatSourcesResponse?>(null) }
     var selectedTab by remember { mutableStateOf(ChatSessionTab.ALL) }
@@ -100,13 +105,13 @@ fun ChatSessionListScreen(
         refreshing = false
     }
 
-    // Initial load & reload when signed-in identity changes (unlocks private chats / WeChat groups)
-    LaunchedEffect(activeAccount?.userId) {
+    // Initial load & reload when signed-in identity or re-auth epoch changes (unlocks private chats / WeChat groups)
+    LaunchedEffect(activeAccount?.userId, sessionEpoch, sessionAuthStatus) {
         loadSources(isRefresh = false, silent = false)
     }
 
     // Background foreground refresh every 60s matching chat.igng.net
-    LaunchedEffect(activeAccount?.userId) {
+    LaunchedEffect(activeAccount?.userId, sessionEpoch, sessionAuthStatus) {
         while (true) {
             delay(60_000L)
             loadSources(silent = true)
@@ -211,11 +216,15 @@ fun ChatSessionListScreen(
                     filteredSessions.isEmpty() -> Box(Modifier.padding(16.dp)) {
                         when {
                             selectedTab == ChatSessionTab.WECHAT && searchQuery.isBlank() -> {
-                                if (activeAccount == null) {
+                                if (!isAuthenticated) {
                                     IgngStateBlock(
-                                        title = "登录后可查看微信会话",
-                                        description = "微信群聊与私聊仅向已登录且绑定微信的群成员开放，登录 IGNG 账号后即可自动同步。",
-                                        actionLabel = "登录 IGNG 账号",
+                                        title = if (sessionExpired) "重新授权后可查看微信会话" else "登录后可查看微信会话",
+                                        description = if (sessionExpired) {
+                                            "当前登录会话已失效，仅展示公开频道。重新授权后即可恢复微信群聊与私聊同步。"
+                                        } else {
+                                            "微信群聊与私聊仅向已登录且绑定微信的群成员开放，登录 IGNG 账号后即可自动同步。"
+                                        },
+                                        actionLabel = if (sessionExpired) "重新授权登录" else "登录 IGNG 账号",
                                         onAction = onSignIn,
                                     )
                                 } else {
@@ -249,30 +258,38 @@ fun ChatSessionListScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        if (activeAccount == null) {
+                        if (activeAccount == null || sessionExpired) {
                             item(key = "guestHint") {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(IgngTheme.radii.md)
-                                        .background(colors.accentSoft)
-                                        .border(0.8.dp, colors.accent.copy(alpha = 0.25f), IgngTheme.radii.md)
+                                        .background(if (sessionExpired) colors.warningBg else colors.accentSoft)
+                                        .border(
+                                            0.8.dp,
+                                            (if (sessionExpired) colors.warning else colors.accent).copy(alpha = 0.35f),
+                                            IgngTheme.radii.md,
+                                        )
                                         .clickable(onClick = onSignIn)
                                         .padding(horizontal = 12.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(
-                                        text = "登录 IGNG 账号可查看微信群、私聊与完整昵称",
+                                        text = if (sessionExpired) {
+                                            "登录会话已失效，当前仅显示公开聊天 · 点击重新授权"
+                                        } else {
+                                            "登录 IGNG 账号可查看微信群、私聊与完整昵称"
+                                        },
                                         style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Medium),
-                                        color = colors.accent,
+                                        color = if (sessionExpired) colors.warning else colors.accent,
                                         modifier = Modifier.weight(1f),
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        text = "去登录",
+                                        text = if (sessionExpired) "重新授权" else "去登录",
                                         style = IgngTheme.type.badge,
-                                        color = colors.accent,
+                                        color = if (sessionExpired) colors.warning else colors.accent,
                                     )
                                 }
                             }

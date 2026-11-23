@@ -58,6 +58,7 @@ import net.igng.mcstatus.core.designsystem.IgngMotion
 import net.igng.mcstatus.core.designsystem.IgngNavTabItem
 import net.igng.mcstatus.core.designsystem.IgngTheme
 import net.igng.mcstatus.core.model.AppPreferences
+import net.igng.mcstatus.core.model.SessionAuthStatus
 import net.igng.mcstatus.feature.admin.AdminPocketConsoleScreen
 import net.igng.mcstatus.feature.chat.ChatConversationScreen
 import net.igng.mcstatus.feature.chat.ChatSessionListScreen
@@ -100,6 +101,7 @@ fun IgngMcApp(
     val dailyExp by container.dailyExp.collectAsState()
     val bootstrap by container.bootstrap.collectAsState()
     val sessionEpoch by container.sessionEpoch.collectAsState()
+    val sessionAuthStatus by container.sessionAuthStatus.collectAsState()
     val incomingIntent by incomingIntentFlow.collectAsState()
 
     IgngTheme(
@@ -116,6 +118,7 @@ fun IgngMcApp(
         var authExchanging by remember { mutableStateOf(false) }
         var authError by remember { mutableStateOf<String?>(null) }
         var sessionExpiredPrompt by remember { mutableStateOf(false) }
+        var promptedLegacyUserId by remember { mutableStateOf<Int?>(null) }
         var selectedFamilyCache by remember { mutableStateOf<Map<String, ServerFamilyDto>>(emptyMap()) }
 
         fun startOAuth(forceLogin: Boolean) {
@@ -196,6 +199,17 @@ fun IgngMcApp(
             if (boot?.viewer?.authenticated == true) {
                 val exp = container.settleDailyLoginForCurrentSession()
                 container.updateDailyExp(exp)
+            } else {
+                container.updateDailyExp(null)
+            }
+        }
+
+        // Prompt once for pre-v2.1.0 legacy sessions whose tokens are suppressed before hitting 401
+        LaunchedEffect(activeAccount?.userId, sessionAuthStatus) {
+            val uid = activeAccount?.userId
+            if (uid != null && sessionAuthStatus == SessionAuthStatus.LEGACY_UPGRADE_REQUIRED && promptedLegacyUserId != uid) {
+                promptedLegacyUserId = uid
+                sessionExpiredPrompt = true
             }
         }
 
@@ -256,6 +270,7 @@ fun IgngMcApp(
                             exploreRepository = container.exploreRepository,
                             statusRepository = container.statusRepository,
                             activeAccount = activeAccount,
+                            sessionAuthStatus = sessionAuthStatus,
                             bottomPadding = bottomBarPadding,
                             onOpenSearch = { navController.navigate(AppRoute.GlobalSearch) },
                             onOpenStatusWall = { navController.navigate(AppRoute.StatusWall) },
@@ -281,6 +296,8 @@ fun IgngMcApp(
                             endpoints = container.endpoints,
                             chatRepository = container.chatRepository,
                             activeAccount = activeAccount,
+                            sessionAuthStatus = sessionAuthStatus,
+                            sessionEpoch = sessionEpoch,
                             bottomPadding = bottomBarPadding,
                             onSignIn = { startOAuth(forceLogin = false) },
                             onOpenSession = { session ->
@@ -341,6 +358,8 @@ fun IgngMcApp(
                     composable<AppRoute.PlayerCenter> {
                         PlayerCenterScreen(
                             activeAccount = activeAccount,
+                            sessionAuthStatus = sessionAuthStatus,
+                            sessionEpoch = sessionEpoch,
                             dailyExp = dailyExp,
                             playerRepository = container.playerRepository,
                             ticketRepository = container.ticketRepository,
@@ -540,12 +559,13 @@ fun IgngMcApp(
                             container = container,
                             preferences = preferences,
                             activeAccount = activeAccount,
+                            sessionAuthStatus = sessionAuthStatus,
                             accounts = accounts,
                             onBack = { navController.popBackStack() },
                             onStartOAuthLogin = { force -> startOAuth(forceLogin = force) },
                             onSwitchAccount = { uid -> container.switchAccount(uid) },
                             onLogoutActive = {
-                                val token = container.activeAccount.value?.token
+                                val token = container.activeUsableToken()
                                 scope.launch {
                                     if (!token.isNullOrBlank()) {
                                         runCatching { container.authRepository.logout(token) }
@@ -606,13 +626,18 @@ fun IgngMcApp(
             }
 
             if (sessionExpiredPrompt) {
+                val isLegacyUpgrade = sessionAuthStatus == SessionAuthStatus.LEGACY_UPGRADE_REQUIRED
                 IgngDetailSheet(
                     onDismiss = { sessionExpiredPrompt = false },
-                    title = "登录会话已失效",
+                    title = if (isLegacyUpgrade) "需要升级登录授权" else "登录会话已失效",
                     subtitle = "重新授权后即可继续，你正在编辑的内容不会被清除。",
                 ) {
                     Text(
-                        "当前设备的 IGNG 登录会话可能已过期或在账户中心被撤销。",
+                        text = if (isLegacyUpgrade) {
+                            "本版本已升级至 OAuth 2.1 安全认证架构，旧版登录凭证已停用。重新授权前仅可浏览公开内容与本地缓存的账户标识。"
+                        } else {
+                            "当前设备的 IGNG 登录会话可能已过期或在账户中心被撤销。重新授权前仅可浏览公开内容与本地缓存的账户标识。"
+                        },
                         style = IgngTheme.type.body,
                         color = colors.textSecondary,
                     )

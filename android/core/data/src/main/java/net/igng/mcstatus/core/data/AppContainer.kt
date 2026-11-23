@@ -25,6 +25,7 @@ import net.igng.mcstatus.core.model.BootstrapResponse
 import net.igng.mcstatus.core.model.DailyExpStatus
 import net.igng.mcstatus.core.model.MotionIntensity
 import net.igng.mcstatus.core.model.SavedAccount
+import net.igng.mcstatus.core.model.SessionAuthStatus
 import net.igng.mcstatus.core.model.SiteEndpoints
 import net.igng.mcstatus.core.model.ThemeMode
 import net.igng.mcstatus.core.network.ApiClient
@@ -110,15 +111,29 @@ class IgngAppContainer(
     // Suppressing them from subsequent requests prevents 401 poisoning of public optionalAuth tabs.
     private val invalidatedTokens: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
 
-    private fun activeUsableToken(): String? {
-        val token = _activeAccount.value?.token?.takeIf { it.isNotBlank() } ?: return null
+    private val _sessionAuthStatus = MutableStateFlow(computeSessionAuthStatus(_activeAccount.value))
+    val sessionAuthStatus: StateFlow<SessionAuthStatus> = _sessionAuthStatus.asStateFlow()
+
+    private fun computeSessionAuthStatus(account: SavedAccount?): SessionAuthStatus = when {
+        account == null -> SessionAuthStatus.SIGNED_OUT
+        account.refreshToken.isNullOrBlank() -> SessionAuthStatus.LEGACY_UPGRADE_REQUIRED
+        invalidatedTokens.contains(account.token) -> SessionAuthStatus.EXPIRED
+        else -> SessionAuthStatus.ACTIVE
+    }
+
+    private fun syncSessionAuthStatus() {
+        _sessionAuthStatus.value = computeSessionAuthStatus(_activeAccount.value)
+    }
+
+    fun activeUsableToken(): String? {
+        val account = _activeAccount.value ?: return null
+        if (account.refreshToken.isNullOrBlank()) return null
+        val token = account.token.takeIf { it.isNotBlank() } ?: return null
         return token.takeUnless { invalidatedTokens.contains(it) }
     }
 
-    private fun isActiveSessionInvalidated(): Boolean {
-        val token = _activeAccount.value?.token?.takeIf { it.isNotBlank() } ?: return false
-        return invalidatedTokens.contains(token)
-    }
+    private fun isActiveSessionInvalidated(): Boolean =
+        computeSessionAuthStatus(_activeAccount.value).requiresReauth
 
     val okHttpClient = IgngHttpClientFactory.create(
         endpoints = endpoints,
@@ -141,27 +156,35 @@ class IgngAppContainer(
         isTokenInvalidated = { invalidatedTokens.contains(it) },
         refreshBlock = { failedAccessToken ->
             val current = _activeAccount.value ?: return@SingleFlightTokenRefresher TokenRefreshResult.Invalidated
-            if (current.token != failedAccessToken && !invalidatedTokens.contains(current.token)) {
+            if (current.token != failedAccessToken && !invalidatedTokens.contains(current.token) && !current.refreshToken.isNullOrBlank()) {
+                syncSessionAuthStatus()
                 return@SingleFlightTokenRefresher TokenRefreshResult.Refreshed(current.token)
             }
             if (current.refreshToken.isNullOrBlank()) {
                 invalidatedTokens.add(failedAccessToken)
+                _dailyExp.value = null
+                syncSessionAuthStatus()
                 return@SingleFlightTokenRefresher TokenRefreshResult.Invalidated
             }
             try {
                 val rotated = authRepository.refreshSession(current)
                 if (rotated == null) {
                     invalidatedTokens.add(failedAccessToken)
+                    _dailyExp.value = null
+                    syncSessionAuthStatus()
                     return@SingleFlightTokenRefresher TokenRefreshResult.Invalidated
                 }
                 invalidatedTokens.remove(rotated.token)
                 sessionStore.save(rotated)
                 _activeAccount.value = sessionStore.activeAccount()
                 _accounts.value = sessionStore.accounts()
+                syncSessionAuthStatus()
                 TokenRefreshResult.Refreshed(rotated.token)
             } catch (error: ApiException) {
                 if (error.statusCode in listOf(400, 401, 403)) {
                     invalidatedTokens.add(failedAccessToken)
+                    _dailyExp.value = null
+                    syncSessionAuthStatus()
                     TokenRefreshResult.Invalidated
                 } else {
                     TokenRefreshResult.TransientFailure
@@ -221,6 +244,7 @@ class IgngAppContainer(
         sessionStore.save(account)
         _activeAccount.value = sessionStore.activeAccount()
         _accounts.value = sessionStore.accounts()
+        syncSessionAuthStatus()
         if (resetDailyExp) {
             _dailyExp.value = null
             _sessionEpoch.value += 1
@@ -231,6 +255,7 @@ class IgngAppContainer(
         sessionStore.switchTo(userId)
         _activeAccount.value = sessionStore.activeAccount()
         _accounts.value = sessionStore.accounts()
+        syncSessionAuthStatus()
         _dailyExp.value = null
         _sessionEpoch.value += 1
     }
@@ -240,6 +265,7 @@ class IgngAppContainer(
         sessionStore.removeActive()
         _activeAccount.value = sessionStore.activeAccount()
         _accounts.value = sessionStore.accounts()
+        syncSessionAuthStatus()
         _dailyExp.value = null
         _sessionEpoch.value += 1
     }

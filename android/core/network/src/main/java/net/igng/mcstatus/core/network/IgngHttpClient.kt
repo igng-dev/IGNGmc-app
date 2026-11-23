@@ -294,7 +294,8 @@ class ApiClient(
         if (first is CallOutcome.Success) return first.body
 
         val err = first as CallOutcome.Failure
-        val canRefresh = err.exception.statusCode == 401 &&
+        val isSessionAuthError = err.exception.isSessionAuthFailure
+        val canRefresh = isSessionAuthError &&
             !suppressAuthNotify &&
             tokenOverride.isNullOrBlank() &&
             !err.sentBearerToken.isNullOrBlank() &&
@@ -310,7 +311,7 @@ class ApiClient(
                     val retry = withContext(Dispatchers.IO) { executeCall(buildRequest(outcome.accessToken, false)) }
                     if (retry is CallOutcome.Success) return retry.body
                     val retryErr = retry as CallOutcome.Failure
-                    if (retryErr.exception.statusCode == 401) {
+                    if (retryErr.exception.isSessionAuthFailure) {
                         sessionExpiredNotifier?.notify(retryErr.url, retryErr.exception.message)
                     }
                     throw retryErr.exception
@@ -324,14 +325,14 @@ class ApiClient(
             }
         }
 
-        if (err.exception.statusCode == 401 && !suppressAuthNotify &&
+        if (isSessionAuthError && !suppressAuthNotify &&
             (!err.sentBearerToken.isNullOrBlank() || hasInvalidatedSession())
         ) {
             sessionExpiredNotifier?.notify(err.url, err.exception.message)
         }
 
         if (allowAnonymousFallback &&
-            err.exception.statusCode == 401 &&
+            isSessionAuthError &&
             !err.sentBearerToken.isNullOrBlank() &&
             (sessionInvalidated || hasInvalidatedSession())
         ) {
