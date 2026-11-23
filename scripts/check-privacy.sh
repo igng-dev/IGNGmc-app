@@ -1,7 +1,7 @@
 #!/bin/sh
 # POSIX privacy & credential checker (equivalent to scripts/check-privacy.ps1).
 # Usage:
-#   scripts/check-privacy.sh         Scan staged files (default, for pre-commit)
+#   scripts/check-privacy.sh         Scan staged files (falls back to working tree if none staged)
 #   scripts/check-privacy.sh --all   Scan all git-tracked files (for CI / full audit)
 set -eu
 
@@ -21,20 +21,34 @@ BIN_EXT=".png .jpg .jpeg .gif .webp .ico .apk .aab .jar .class .bin .jks .keysto
 TOKEN_PAT='(github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY)'
 # Hardcoded secret assignments (skipped on *.example / *.example.* template files)
 ASSIGN_PAT='(^|[^^])(password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]?key)[[:space:]]*[:=][[:space:]]*("[^")][^"]{7,}"|'\''[^'\'')][^'\'']{7,}'\'')'
+# Private LAN IPv4 addresses / SMB UNC hosts
+PRIVATE_IP_PAT='(^|[^0-9.])(192\.168\.[0-9]{1,3}\.[0-9]{1,3}|10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3})([^0-9.]|$)'
+# Machine-specific personal home paths (/Users/<name>/, /home/<name>/, C:\Users\<name>\)
+ABS_HOME_PAT='(/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\)'
+
+SCAN_MODE="staged"
+if [ "$SCAN_ALL" = "1" ]; then
+  SCAN_MODE="tracked"
+else
+  staged_check=$(git diff --cached --name-only --diff-filter=ACMRT)
+  if [ -z "$staged_check" ]; then
+    SCAN_MODE="working-tree"
+  fi
+fi
 
 list_files() {
-  if [ "$SCAN_ALL" = "1" ]; then
-    git ls-files
-  else
-    git diff --cached --name-only --diff-filter=ACMRT
-  fi
+  case "$SCAN_MODE" in
+    tracked) git ls-files ;;
+    staged) git diff --cached --name-only --diff-filter=ACMRT ;;
+    working-tree) git ls-files -co --exclude-standard ;;
+  esac
 }
 
 read_blob() {
-  if [ "$SCAN_ALL" = "1" ]; then
-    [ -f "$1" ] && cat "$1"
-  else
+  if [ "$SCAN_MODE" = "staged" ]; then
     git show --no-ext-diff --textconv ":$1" 2>/dev/null
+  else
+    [ -f "$1" ] && cat "$1"
   fi
 }
 
@@ -61,8 +75,8 @@ check_all() {
         ;;
     esac
     case "$f" in
-      android/keystore/*|*/keystore/*)
-        echo "forbidden keystore path: $f" >&2; failed=1; continue
+      android/keystore/*|*/keystore/*|android/signing/*|*/signing/*)
+        echo "forbidden signing/keystore path: $f" >&2; failed=1; continue
         ;;
     esac
     if [ -n "$ext" ]; then
@@ -84,6 +98,14 @@ check_all() {
       failed=1
       continue
     fi
+    if read_blob "$f" | grep -E -q "$PRIVATE_IP_PAT"; then
+      echo "private LAN IP address: $f" >&2
+      failed=1
+    fi
+    if read_blob "$f" | grep -E -q "$ABS_HOME_PAT"; then
+      echo "machine-specific home path: $f" >&2
+      failed=1
+    fi
     if [ "$is_example" = "0" ] && read_blob "$f" | grep -Ei -q "$ASSIGN_PAT"; then
       echo "secret-like assignment: $f" >&2
       failed=1
@@ -94,9 +116,7 @@ check_all() {
     echo "privacy check FAILED" >&2
     return 1
   fi
-  scope="staged"
-  [ "$SCAN_ALL" = "1" ] && scope="tracked"
-  echo "privacy check passed ($count $scope file(s) scanned)"
+  echo "privacy check passed ($count $SCAN_MODE file(s) scanned)"
 }
 
 list_files | check_all

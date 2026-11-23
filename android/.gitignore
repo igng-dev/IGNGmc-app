@@ -1,9 +1,9 @@
+# Supplemental ignores for Android Studio when opening android/ directly
+# (Primary ignore rules live in repository root .gitignore)
 .gradle/
 .kotlin/
 /build/
 /app/build/
 /local.properties
 /keystore/
-**/*.jks
-**/*.keystore
-**/keystore.properties
+/signing/

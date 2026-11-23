@@ -1,17 +1,47 @@
-# Android / Gradle
-.gradle/
-.kotlin/
+# OS / editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+**/*.bak
+
+# Android / Gradle / Kotlin local state
+**/.gradle/
 **/.kotlin/
 **/build/
-local.properties
+**/captures/
+**/local.properties
+**/generated/
+**/externalNativeBuild/
+**/.cxx/
+
+# Android Studio / IntelliJ
 *.iml
 .idea/
+*.user
+*.suo
+*.hprof
+*.stacktrace
 
-# Local release signing material. Never commit these files.
+# Signing keys, secrets, and local artifacts (never commit)
 **/keystore/
-**/*.jks
-**/*.keystore
+**/signing/
 **/keystore.properties
+**/release-signing.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.der
+.env
+.env.*
+!.env.example
+*.apk
+*.aab
+artifacts/
 
 # Local tools, logs, screenshots, and temporary exports
 tmp/
@@ -21,15 +51,3 @@ tmp/
 *.dump
 captures/
 screenshots/
-
-# Local environment and IDE metadata
-.env
-.env.*
-!.env.example
-*.user
-*.suo
-
-# OS/editor files
-.DS_Store
-Thumbs.db
-*.swp

@@ -47,13 +47,13 @@ while read -r local_ref local_oid remote_ref remote_oid; do
   fi
 
   # 非快进（需要 force）：集成分支禁止重写历史；
-  # Agent 独占分支按规范允许 --force-with-lease（钩子看不到具体 flag，故不拦）。
+  # Agent 独占分支按设备级规范允许 --force-with-lease（钩子看不到具体 flag，故不拦）。
   if [ "$is_protected" = 1 ] && ! git merge-base --is-ancestor "$remote_oid" "$local_oid" 2>/dev/null; then
     echo "pre-push 拒绝：$name 是受保护分支且非快进。集成分支不允许重写历史。" >&2
     blocked=1
   fi
 
-  # 统一 PR：任何模式都禁止直推集成分支。
+  # 统一 PR：任何模式都禁止直推集成分支。solo 只是免人工 review，不是免 PR。
   # 确需绕过（用户明确授权的热修复或历史修复）：GIT_ALLOW_DIRECT_PUSH=1，并在回报中写明绕过了什么。
   if [ "$is_protected" = 1 ] && [ "${GIT_ALLOW_DIRECT_PUSH:-}" != "1" ]; then
     echo "pre-push 拒绝：$name 是集成分支，规定改动一律经 Pull Request 进入。" >&2
@@ -67,7 +67,8 @@ while read -r local_ref local_oid remote_ref remote_oid; do
   fi
 done <<< "$data"
 
-orig="${GIT_DIR:-.git}/hooks/pre-push.orig"
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null || printf '%s' "${GIT_DIR:-.git}")
+orig="${common_dir}/hooks/pre-push.orig"
 if [ -x "$orig" ]; then
   if ! printf '%s\n' "$data" | "$orig" "$@"; then
     echo "pre-push 拒绝：仓库原有的 pre-push 钩子返回失败。" >&2

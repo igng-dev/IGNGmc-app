@@ -21,8 +21,6 @@ class IgngApplication : Application(), SingletonImageLoader.Factory {
                 dashBaseUrl = BuildConfig.DASH_BASE_URL,
                 ssoBaseUrl = BuildConfig.SSO_BASE_URL,
                 chatBaseUrl = BuildConfig.CHAT_BASE_URL,
-                wikiBaseUrl = BuildConfig.WIKI_BASE_URL,
-                mapRelayUrl = BuildConfig.MAP_RELAY_URL,
             ),
             clientVersion = BuildConfig.VERSION_NAME,
         )
