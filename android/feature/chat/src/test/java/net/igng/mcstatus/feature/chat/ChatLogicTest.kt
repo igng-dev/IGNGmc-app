@@ -197,4 +197,104 @@ class ChatLogicTest {
         assertEquals("qq-90001", ChatPlatformRules.parseLocateMessageId("#90001", "qq"))
         assertEquals("42", ChatPlatformRules.parseLocateMessageId("#42", "server"))
     }
+
+    @Test
+    fun stripsMd5StickersEnglishPlaceholdersAndHumanizesHashedNames() {
+        // WeChat image with md5 token and attachment strips raw English md5 text cleanly
+        val wxWithImg = ChatMessageDto(
+            id = "qq-30",
+            source = "qq",
+            platform = "wechat",
+            content = "[图片 md5=61af10c689121897d1226702df40e766] 附言",
+            attachments = listOf(
+                ChatAttachmentDto(index = 0, kind = "image", url = "/api/v1/chat/media/qq-30/0"),
+            ),
+        )
+        val parsedWxWithImg = extractMessageDisplay(wxWithImg)
+        assertEquals("附言", parsedWxWithImg.text)
+        assertEquals(1, parsedWxWithImg.images.size)
+        assertEquals(0, parsedWxWithImg.missingImages)
+
+        // WeChat image without extracted media humanizes md5 token into clean Chinese `[图片]`
+        val wxMissingImg = ChatMessageDto(
+            id = "qq-31",
+            source = "qq",
+            platform = "wechat",
+            content = "[图片 md5=61af10c689121897d1226702df40e766]",
+            attachments = emptyList(),
+        )
+        val parsedWxMissing = extractMessageDisplay(wxMissingImg)
+        assertEquals("[图片]", parsedWxMissing.text)
+        assertFalse(parsedWxMissing.text.contains("md5"))
+
+        // English segment fallbacks and sticker/video/audio placeholders
+        val engMedia = ChatMessageDto(
+            id = "qq-32",
+            source = "qq",
+            platform = "qq",
+            content = "[贴纸: 开心] [image] [video] [record] 说明",
+            attachments = listOf(
+                ChatAttachmentDto(index = 0, kind = "sticker", url = "/api/v1/chat/media/qq-32/0"),
+                ChatAttachmentDto(index = 1, kind = "file", mimeType = "image/webp", url = "/api/v1/chat/media/qq-32/1"),
+                ChatAttachmentDto(index = 2, kind = "video", url = "/api/v1/chat/media/qq-32/2"),
+                ChatAttachmentDto(index = 3, kind = "voice", url = "/api/v1/chat/media/qq-32/3"),
+            ),
+        )
+        val parsedEng = extractMessageDisplay(engMedia)
+        assertEquals("说明", parsedEng.text)
+        assertEquals(2, parsedEng.images.size)
+        assertEquals(1, parsedEng.videos.size)
+        assertEquals(1, parsedEng.audios.size)
+        assertEquals(0, parsedEng.files.size)
+
+        // Machine-generated hash filenames become friendly Chinese titles while real filenames stay
+        assertEquals(
+            "聊天图片",
+            friendlyMediaDisplayName(
+                "-2105710147_C56BF959425841EA94464B9E3A3A7660_348b7b5badc340d7a72d78ed81908f6a.webp",
+                "聊天图片",
+            ),
+        )
+        assertEquals("聊天图片", friendlyMediaDisplayName("face_277.webp", "聊天图片"))
+        assertEquals("服务器必装材质.zip", friendlyMediaDisplayName("服务器必装材质.zip", "聊天文件"))
+    }
+
+    @Test
+    fun resolvesMcFirstPartyAvatarProxyAndUpgradesHttpQlogo() {
+        val mcMsg = ChatMessageDto(
+            id = "mc-1",
+            source = "server",
+            platform = "mc",
+            senderName = "Tianning",
+            content = "hi",
+        )
+        val mcSender = resolveChatSender(mcMsg, emptyMap(), activeAccount = null)
+        assertEquals("/api/v1/mc/avatars/Tianning?size=64", mcSender.avatarUrl)
+        assertTrue(mcSender.fallbackAvatarUrls.any { it.contains("minotar.net") })
+        assertTrue(mcSender.fallbackAvatarUrls.any { it.contains("mc-heads.net") })
+
+        val wxMsg = ChatMessageDto(
+            id = "qq-40",
+            source = "qq",
+            platform = "wechat",
+            senderId = "700000000000202",
+            senderName = "Bob",
+            content = "hello",
+        )
+        val wxProfiles = mapOf(
+            "wechat:700000000000202" to ChatSenderProfileDto(
+                avatarUrl = "http://wx.qlogo.cn/mmhead/ver_1/abc/0",
+            ),
+        )
+        val wxSender = resolveChatSender(wxMsg, wxProfiles, activeAccount = null)
+        assertEquals("https://wx.qlogo.cn/mmhead/ver_1/abc/0", wxSender.avatarUrl)
+
+        val sources = ChatSourcesResponse(
+            qqGroups = listOf(
+                ChatGroupSourceDto(id = "885647215", name = "IGNGmc1群", platform = "qq"),
+            ),
+        )
+        val sessions = buildUnifiedSessions(sources)
+        assertEquals("https://p.qlogo.cn/gh/885647215/885647215/100", sessions.first().avatarUrl)
+    }
 }

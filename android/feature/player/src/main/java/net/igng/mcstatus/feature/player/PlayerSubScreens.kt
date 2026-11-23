@@ -1363,8 +1363,25 @@ fun PersonalPerfectScreen(playerRepository: PlayerRepository, onBack: () -> Unit
                                 if (info.holders.isNotEmpty()) {
                                     Spacer(Modifier.height(8.dp))
                                     info.holders.forEach { h ->
-                                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text(h.username, style = IgngTheme.type.bodyMedium, color = colors.textPrimary)
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                h.memberNoLabel?.takeIf { it.isNotBlank() }?.let {
+                                                    IgngBadge(it, tone = IgngBadgeTone.Warning)
+                                                }
+                                                Column {
+                                                    Text(h.username, style = IgngTheme.type.bodyMedium, color = colors.textPrimary)
+                                                    h.qualificationLabel?.takeIf { it.isNotBlank() }?.let {
+                                                        Text(it, style = IgngTheme.type.badge, color = colors.textSecondary)
+                                                    }
+                                                }
+                                            }
                                             IgngBadge(
                                                 text = if (h.isHolder) "已生效" else "未生效",
                                                 tone = if (h.isHolder) IgngBadgeTone.Success else IgngBadgeTone.Neutral,
@@ -1379,9 +1396,16 @@ fun PersonalPerfectScreen(playerRepository: PlayerRepository, onBack: () -> Unit
                             itemsIndexed(info.benefits, key = { i, b -> "${b.key}:$i" }) { idx, b ->
                                 IgngTile(modifier = Modifier.fillMaxWidth().igngStaggeredReveal(idx)) {
                                     Text(b.title, style = IgngTheme.type.cardTitle, color = colors.textPrimary)
-                                    if (b.description.isNotBlank()) {
+                                    val benefitDesc = b.summary.ifBlank { b.description }
+                                    if (benefitDesc.isNotBlank()) {
                                         Spacer(Modifier.height(3.dp))
-                                        Text(b.description, style = IgngTheme.type.caption, color = colors.textSecondary)
+                                        Text(benefitDesc, style = IgngTheme.type.caption, color = colors.textSecondary)
+                                    }
+                                    if (b.limits.isNotEmpty()) {
+                                        Spacer(Modifier.height(6.dp))
+                                        b.limits.forEach { lim ->
+                                            Text("· $lim", style = IgngTheme.type.badge, color = colors.textMuted)
+                                        }
                                     }
                                     val limit = b.limit ?: 0
                                     val used = b.used ?: 0
@@ -1396,6 +1420,48 @@ fun PersonalPerfectScreen(playerRepository: PlayerRepository, onBack: () -> Unit
                                         Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(999.dp)).background(colors.tileSoft)) {
                                             Box(Modifier.fillMaxWidth(ratio).height(6.dp).clip(RoundedCornerShape(999.dp)).background(colors.accent))
                                         }
+                                    }
+                                }
+                            }
+                        }
+                        if (info.criteria.isNotEmpty()) {
+                            item {
+                                IgngTile(modifier = Modifier.fillMaxWidth()) {
+                                    IgngSectionHeader(title = "认证标准")
+                                    Spacer(Modifier.height(8.dp))
+                                    info.criteria.forEach { c ->
+                                        Column(Modifier.padding(vertical = 4.dp)) {
+                                            if (c.title.isNotBlank()) {
+                                                Text(c.title, style = IgngTheme.type.bodyMedium, color = colors.textPrimary)
+                                            }
+                                            if (c.text.isNotBlank()) {
+                                                Text(c.text, style = IgngTheme.type.caption, color = colors.textSecondary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (info.rules.isNotEmpty()) {
+                            item {
+                                IgngTile(modifier = Modifier.fillMaxWidth()) {
+                                    IgngSectionHeader(title = "权益细则")
+                                    Spacer(Modifier.height(8.dp))
+                                    info.rules.forEach { r ->
+                                        if (r.text.isNotBlank()) {
+                                            Text("· ${r.text}", style = IgngTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(vertical = 2.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (info.applySteps.isNotEmpty()) {
+                            item {
+                                IgngTile(modifier = Modifier.fillMaxWidth()) {
+                                    IgngSectionHeader(title = "申请流程")
+                                    Spacer(Modifier.height(8.dp))
+                                    info.applySteps.forEachIndexed { i, step ->
+                                        Text("${i + 1}. $step", style = IgngTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(vertical = 2.dp))
                                     }
                                 }
                             }

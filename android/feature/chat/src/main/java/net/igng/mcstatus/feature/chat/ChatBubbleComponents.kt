@@ -28,7 +28,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -140,6 +142,7 @@ fun ChatSystemNoticePill(text: String, modifier: Modifier = Modifier) {
 fun ChatSenderAvatar(
     sender: ResolvedChatSender,
     size: Dp = 36.dp,
+    endpoints: SiteEndpoints = SiteEndpoints(),
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -160,6 +163,16 @@ fun ChatSenderAvatar(
         sender.isAccountSelf -> colors.textSecondary
         else -> tone.avatarFg
     }
+    val candidates = remember(sender.avatarUrl, sender.fallbackAvatarUrls, endpoints) {
+        buildList {
+            endpoints.resolveApiMediaUrl(sender.avatarUrl)?.let { add(it) }
+            sender.fallbackAvatarUrls.forEach { fallback ->
+                endpoints.resolveApiMediaUrl(fallback)?.let { add(it) }
+            }
+        }.distinct()
+    }
+    var attemptIndex by remember(candidates) { mutableIntStateOf(0) }
+    val activeUrl = candidates.getOrNull(attemptIndex)
 
     Box(
         modifier = modifier
@@ -184,11 +197,16 @@ fun ChatSenderAvatar(
                 color = fg,
             )
         }
-        if (!sender.avatarUrl.isNullOrBlank()) {
+        if (!activeUrl.isNullOrBlank()) {
             AsyncImage(
-                model = sender.avatarUrl,
+                model = activeUrl,
                 contentDescription = sender.displayName,
                 contentScale = ContentScale.Crop,
+                onError = {
+                    if (attemptIndex < candidates.size) {
+                        attemptIndex += 1
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -254,6 +272,7 @@ fun ChatMessageGroupBlock(
                     if (isFirst) {
                         ChatSenderAvatar(
                             sender = sender,
+                            endpoints = endpoints,
                             onClick = if (canOpenSender) ({ onSenderClick(sender) }) else null,
                         )
                     } else {
@@ -495,6 +514,7 @@ fun ChatMessageGroupBlock(
                     if (isFirst) {
                         ChatSenderAvatar(
                             sender = sender,
+                            endpoints = endpoints,
                             onClick = if (canOpenSender) ({ onSenderClick(sender) }) else null,
                         )
                     } else {

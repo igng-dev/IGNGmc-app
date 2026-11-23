@@ -245,8 +245,15 @@ private fun ServerStatusCard(
         }
 
         Spacer(Modifier.height(12.dp))
+        val onlinePlayers = server.onlinePlayers
+        val maxPlayers = server.maxPlayers
+        val playerLabel = when {
+            onlinePlayers != null && maxPlayers != null && maxPlayers > 0 ->
+                "${IgngFormatters.formatNumber(onlinePlayers)}/${IgngFormatters.formatNumber(maxPlayers)}"
+            else -> IgngFormatters.formatNumber(onlinePlayers)
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricInline("玩家", IgngFormatters.formatNumber(server.onlinePlayers), Modifier.weight(1f))
+            MetricInline("玩家", playerLabel, Modifier.weight(1f))
             MetricInline("TPS", IgngFormatters.formatDecimal(server.tps, 1), Modifier.weight(1f))
             MetricInline("延迟", IgngFormatters.formatDecimal(server.pingMs, 0, "ms"), Modifier.weight(1f))
             MetricInline("内存", server.memoryUsageMb?.let { "${it.toInt()}M" } ?: "—", Modifier.weight(1f))
@@ -255,9 +262,9 @@ private fun ServerStatusCard(
         val buckets = remember(series) {
             series?.statusGrid.orEmpty().map { b ->
                 val level = when (b.status.lowercase()) {
-                    "healthy", "online", "ok" -> HealthBucketLevel.Healthy
+                    "good", "healthy", "online", "ok" -> HealthBucketLevel.Healthy
                     "degraded", "warn", "warning", "stale" -> HealthBucketLevel.Degraded
-                    "down", "offline", "unreachable", "error" -> HealthBucketLevel.Down
+                    "critical", "down", "offline", "unreachable", "error" -> HealthBucketLevel.Down
                     else -> HealthBucketLevel.NoData
                 }
                 HealthBucketItem(

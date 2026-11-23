@@ -1,5 +1,6 @@
 package net.igng.mcstatus.core.network
 
+import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -8,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -16,12 +18,15 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.igng.mcstatus.core.model.SiteEndpoints
+import okhttp3.Authenticator
 import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.Route
 
 data class SessionExpiredEvent(
     val url: String,
@@ -112,6 +117,66 @@ object IgngHttpClientFactory {
             }
             .build()
     }
+
+    /**
+     * Builds a derived OkHttpClient for binary media / Coil image fetching that handles 401
+     * responses on the unified v1 gateway by coordinating single-flight OAuth token refresh
+     * and falling back to anonymous access for public optional-auth media endpoints when the
+     * session has been invalidated.
+     */
+    fun createMediaClient(
+        baseClient: OkHttpClient,
+        endpoints: SiteEndpoints,
+        tokenRefresher: SingleFlightTokenRefresher,
+        sessionExpiredNotifier: SessionExpiredNotifier? = null,
+    ): OkHttpClient {
+        val trustedHosts = endpoints.trustedAuthHosts()
+        return baseClient.newBuilder()
+            .authenticator(
+                Authenticator { _: Route?, response: Response ->
+                    if (priorResponseCount(response) >= 2) return@Authenticator null
+                    val req = response.request
+                    val host = req.url.host.lowercase()
+                    if (host !in trustedHosts) return@Authenticator null
+                    val sentAuth = req.header("Authorization")
+                    val sentBearer = sentAuth
+                        ?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }
+                        ?.substring(7)
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?: return@Authenticator null
+
+                    val outcome = runCatching {
+                        runBlocking { tokenRefresher.refreshIfNeeded(sentBearer) }
+                    }.getOrElse { TokenRefreshResult.TransientFailure }
+
+                    when (outcome) {
+                        is TokenRefreshResult.Refreshed -> req.newBuilder()
+                            .header("Authorization", "Bearer ${outcome.accessToken}")
+                            .build()
+                        TokenRefreshResult.Invalidated -> {
+                            sessionExpiredNotifier?.notify(req.url.toString(), "登录状态已失效，请重新登录")
+                            req.newBuilder()
+                                .removeHeader("Authorization")
+                                .header(SKIP_AUTH_HEADER, "1")
+                                .build()
+                        }
+                        TokenRefreshResult.TransientFailure -> null
+                    }
+                },
+            )
+            .build()
+    }
+
+    private fun priorResponseCount(response: Response): Int {
+        var count = 1
+        var prior = response.priorResponse
+        while (prior != null) {
+            count += 1
+            prior = prior.priorResponse
+        }
+        return count
+    }
 }
 
 class ApiClient(
@@ -199,6 +264,103 @@ class ApiClient(
         tokenOverride = tokenOverride,
         suppressAuthNotify = suppressAuthNotify,
     )
+
+    /**
+     * Downloads a binary resource (chat audio/video/file) into [targetFile] with the same
+     * single-flight OAuth 401 refresh and optional anonymous fallback as JSON API requests.
+     */
+    suspend fun downloadToFile(
+        url: String,
+        targetFile: File,
+        allowAnonymousFallback: Boolean = true,
+    ): File {
+        fun buildReq(override: String?, skipAuth: Boolean): Request = Request.Builder()
+            .url(url)
+            .header("Accept", "*/*")
+            .apply {
+                if (skipAuth) {
+                    header(IgngHttpClientFactory.SKIP_AUTH_HEADER, "1")
+                } else if (!override.isNullOrBlank()) {
+                    header("Authorization", "Bearer $override")
+                }
+            }
+            .get()
+            .build()
+
+        suspend fun attempt(override: String?, skipAuth: Boolean): CallOutcome = withContext(Dispatchers.IO) {
+            okHttpClient.newCall(buildReq(override, skipAuth)).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val sentAuth = response.request.header("Authorization")
+                    val bearer = sentAuth?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }
+                        ?.substring(7)?.trim()?.takeIf { it.isNotBlank() }
+                    return@withContext CallOutcome.Failure(
+                        url = response.request.url.toString(),
+                        sentBearerToken = bearer,
+                        exception = ApiException(
+                            statusCode = response.code,
+                            errorCode = null,
+                            message = "媒体读取失败（HTTP ${response.code}）",
+                            retryAfterSeconds = response.header("Retry-After")?.toIntOrNull(),
+                        ),
+                    )
+                }
+                val body = response.body ?: throw IllegalStateException("媒体响应为空")
+                val tmp = File(targetFile.parentFile, "${targetFile.name}.tmp")
+                body.byteStream().use { input ->
+                    tmp.outputStream().use { output -> input.copyTo(output) }
+                }
+                if (!tmp.renameTo(targetFile)) {
+                    tmp.copyTo(targetFile, overwrite = true)
+                    tmp.delete()
+                }
+                CallOutcome.Success("")
+            }
+        }
+
+        val first = attempt(null, false)
+        if (first is CallOutcome.Success) return targetFile
+
+        val err = first as CallOutcome.Failure
+        val isSessionAuthError = err.exception.isSessionAuthFailure
+        val refresher = tokenRefresher
+        val sentBearer = err.sentBearerToken
+        var sessionInvalidated = false
+        if (isSessionAuthError && !sentBearer.isNullOrBlank() && refresher != null) {
+            val outcome = runCatching {
+                refresher.refreshIfNeeded(sentBearer)
+            }.getOrElse { TokenRefreshResult.TransientFailure }
+            when (outcome) {
+                is TokenRefreshResult.Refreshed -> {
+                    val retry = attempt(outcome.accessToken, false)
+                    if (retry is CallOutcome.Success) return targetFile
+                    val retryErr = retry as CallOutcome.Failure
+                    if (retryErr.exception.isSessionAuthFailure) {
+                        sessionExpiredNotifier?.notify(retryErr.url, retryErr.exception.message)
+                    }
+                    throw retryErr.exception
+                }
+                TokenRefreshResult.Invalidated -> {
+                    sessionInvalidated = true
+                }
+                TokenRefreshResult.TransientFailure -> throw err.exception
+            }
+        }
+
+        if (isSessionAuthError && (!sentBearer.isNullOrBlank() || hasInvalidatedSession())) {
+            sessionExpiredNotifier?.notify(err.url, err.exception.message)
+        }
+
+        if (allowAnonymousFallback &&
+            isSessionAuthError &&
+            !sentBearer.isNullOrBlank() &&
+            (sessionInvalidated || hasInvalidatedSession())
+        ) {
+            val anon = attempt(null, true)
+            if (anon is CallOutcome.Success) return targetFile
+            throw (anon as CallOutcome.Failure).exception
+        }
+        throw err.exception
+    }
 
     suspend fun uploadImage(
         url: String,

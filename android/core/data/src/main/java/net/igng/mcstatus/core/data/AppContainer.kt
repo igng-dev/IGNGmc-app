@@ -202,9 +202,16 @@ class IgngAppContainer(
         hasInvalidatedSession = { isActiveSessionInvalidated() },
     )
 
+    val mediaOkHttpClient = IgngHttpClientFactory.createMediaClient(
+        baseClient = okHttpClient,
+        endpoints = endpoints,
+        tokenRefresher = tokenRefresher,
+        sessionExpiredNotifier = sessionExpiredNotifier,
+    )
+
     val imageLoader: ImageLoader = ImageLoader.Builder(appContext)
         .components {
-            add(OkHttpNetworkFetcherFactory(callFactory = { okHttpClient }))
+            add(OkHttpNetworkFetcherFactory(callFactory = { mediaOkHttpClient }))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 add(AnimatedImageDecoder.Factory())
             } else {

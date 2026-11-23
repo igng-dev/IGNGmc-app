@@ -1,11 +1,123 @@
 package net.igng.mcstatus.core.data
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import net.igng.mcstatus.core.model.V1Id
 
 // ==================== Server Catalog & MOTD (GET /api/v1/mc/servers, /motd) ====================
+
+@Serializable(with = ServerPluginItemSerializer::class)
+data class ServerPluginItemDto(
+    val label: String = "",
+    val href: String? = null,
+    val value: String? = null,
+) {
+    val displayTitle: String get() = label.ifBlank { value.orEmpty() }
+}
+
+object ServerPluginItemSerializer : KSerializer<ServerPluginItemDto> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("ServerPluginItemDto")
+
+    override fun deserialize(decoder: Decoder): ServerPluginItemDto {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return ServerPluginItemDto(label = decoder.decodeString())
+        return when (val element = jsonDecoder.decodeJsonElement()) {
+            is JsonPrimitive -> ServerPluginItemDto(label = element.contentOrNull.orEmpty())
+            is JsonObject -> {
+                val label = element["label"]?.jsonPrimitive?.contentOrNull
+                    ?: element["name"]?.jsonPrimitive?.contentOrNull
+                    ?: element["title"]?.jsonPrimitive?.contentOrNull
+                    ?: ""
+                val href = element["href"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                    ?: element["url"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                val value = element["value"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                ServerPluginItemDto(label = label, href = href, value = value)
+            }
+            else -> ServerPluginItemDto()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: ServerPluginItemDto) {
+        val jsonEncoder = encoder as? JsonEncoder ?: run {
+            encoder.encodeString(value.displayTitle)
+            return
+        }
+        jsonEncoder.encodeJsonElement(
+            buildJsonObject {
+                put("label", value.label)
+                value.href?.let { put("href", it) }
+                value.value?.let { put("value", it) }
+            },
+        )
+    }
+}
+
+@Serializable(with = ServerWorldEntrySerializer::class)
+data class ServerWorldEntryDto(
+    val label: String = "",
+    val world: String = "",
+) {
+    val displayLabel: String get() = label.ifBlank { world }
+}
+
+object ServerWorldEntrySerializer : KSerializer<ServerWorldEntryDto> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("ServerWorldEntryDto")
+
+    override fun deserialize(decoder: Decoder): ServerWorldEntryDto {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return decoder.decodeString().let { ServerWorldEntryDto(label = it, world = it) }
+        return when (val element = jsonDecoder.decodeJsonElement()) {
+            is JsonPrimitive -> {
+                val text = element.contentOrNull.orEmpty()
+                ServerWorldEntryDto(label = text, world = text)
+            }
+            is JsonArray -> {
+                val first = element.getOrNull(0)?.jsonPrimitive?.contentOrNull.orEmpty()
+                val second = element.getOrNull(1)?.jsonPrimitive?.contentOrNull.orEmpty()
+                if (second.isNotBlank()) {
+                    ServerWorldEntryDto(label = first.ifBlank { second }, world = second)
+                } else {
+                    ServerWorldEntryDto(label = first, world = first)
+                }
+            }
+            is JsonObject -> {
+                val label = element["label"]?.jsonPrimitive?.contentOrNull
+                    ?: element["name"]?.jsonPrimitive?.contentOrNull
+                    ?: ""
+                val world = element["world"]?.jsonPrimitive?.contentOrNull
+                    ?: element["key"]?.jsonPrimitive?.contentOrNull
+                    ?: element["id"]?.jsonPrimitive?.contentOrNull
+                    ?: label
+                ServerWorldEntryDto(label = label.ifBlank { world }, world = world)
+            }
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: ServerWorldEntryDto) {
+        val jsonEncoder = encoder as? JsonEncoder ?: run {
+            encoder.encodeString(value.world.ifBlank { value.label })
+            return
+        }
+        jsonEncoder.encodeJsonElement(
+            JsonArray(listOf(JsonPrimitive(value.displayLabel), JsonPrimitive(value.world))),
+        )
+    }
+}
 
 @Serializable
 data class FlatServerDto(
@@ -86,8 +198,8 @@ data class ServerSeasonDto(
     @SerialName("background_key") val backgroundKey: String? = null,
     val highlights: List<String> = emptyList(),
     val rules: List<String> = emptyList(),
-    val plugins: List<String> = emptyList(),
-    val worlds: List<String> = emptyList(),
+    val plugins: List<ServerPluginItemDto> = emptyList(),
+    val worlds: List<ServerWorldEntryDto> = emptyList(),
     val command: String? = null,
     @SerialName("cpu_model") val cpuModel: String? = null,
     @SerialName("cpu_spec") val cpuSpec: String? = null,
@@ -258,7 +370,15 @@ data class StatusGridBucketDto(
     val start: String get() = bucketAt
     val coverageLabel: String
         get() = buildString {
-            append(status)
+            append(
+                when (status.lowercase()) {
+                    "good", "healthy", "online", "ok" -> "正常"
+                    "degraded", "warn", "warning", "stale" -> "波动"
+                    "critical", "down", "offline", "unreachable", "error" -> "异常"
+                    "no_data" -> "无数据"
+                    else -> status
+                },
+            )
             avgLatencyMs?.let { append(" · ${it.toInt()}ms") }
             packetLossPct?.takeIf { it > 0.0 }?.let { append(" · 丢包 ${"%.1f".format(it)}%") }
         }
@@ -448,16 +568,106 @@ data class PerfectBenefitServerDto(
     @SerialName("server_name") val serverName: String? = null,
 )
 
+@Serializable(with = PerfectRuleSerializer::class)
+data class PerfectRuleDto(
+    val benefit: String? = null,
+    val text: String = "",
+)
+
+object PerfectRuleSerializer : KSerializer<PerfectRuleDto> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("PerfectRuleDto")
+
+    override fun deserialize(decoder: Decoder): PerfectRuleDto {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return PerfectRuleDto(text = decoder.decodeString())
+        return when (val element = jsonDecoder.decodeJsonElement()) {
+            is JsonPrimitive -> PerfectRuleDto(text = element.contentOrNull.orEmpty())
+            is JsonObject -> PerfectRuleDto(
+                benefit = element["benefit"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+                text = element["text"]?.jsonPrimitive?.contentOrNull
+                    ?: element["description"]?.jsonPrimitive?.contentOrNull
+                    ?: element["title"]?.jsonPrimitive?.contentOrNull
+                    ?: "",
+            )
+            else -> PerfectRuleDto()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: PerfectRuleDto) {
+        val jsonEncoder = encoder as? JsonEncoder ?: run {
+            encoder.encodeString(value.text)
+            return
+        }
+        jsonEncoder.encodeJsonElement(
+            buildJsonObject {
+                value.benefit?.let { put("benefit", it) }
+                put("text", value.text)
+            },
+        )
+    }
+}
+
+@Serializable(with = PerfectCriterionSerializer::class)
+data class PerfectCriterionDto(
+    val key: String? = null,
+    val title: String = "",
+    val text: String = "",
+) {
+    val displayLine: String
+        get() = when {
+            title.isNotBlank() && text.isNotBlank() -> "$title：$text"
+            title.isNotBlank() -> title
+            else -> text
+        }
+}
+
+object PerfectCriterionSerializer : KSerializer<PerfectCriterionDto> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("PerfectCriterionDto")
+
+    override fun deserialize(decoder: Decoder): PerfectCriterionDto {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return PerfectCriterionDto(text = decoder.decodeString())
+        return when (val element = jsonDecoder.decodeJsonElement()) {
+            is JsonPrimitive -> PerfectCriterionDto(text = element.contentOrNull.orEmpty())
+            is JsonObject -> PerfectCriterionDto(
+                key = element["key"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+                title = element["title"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                text = element["text"]?.jsonPrimitive?.contentOrNull
+                    ?: element["description"]?.jsonPrimitive?.contentOrNull
+                    ?: "",
+            )
+            else -> PerfectCriterionDto()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: PerfectCriterionDto) {
+        val jsonEncoder = encoder as? JsonEncoder ?: run {
+            encoder.encodeString(value.displayLine)
+            return
+        }
+        jsonEncoder.encodeJsonElement(
+            buildJsonObject {
+                value.key?.let { put("key", it) }
+                put("title", value.title)
+                put("text", value.text)
+            },
+        )
+    }
+}
+
 @Serializable
 data class PerfectBenefitDto(
     val key: String = "",
     val title: String = "",
     val description: String = "",
+    @SerialName("summary") val summaryRaw: String = "",
+    val limits: List<String> = emptyList(),
+    @SerialName("server_label") val serverLabel: String? = null,
     val used: Int? = null,
     val limit: Int? = null,
     val servers: List<PerfectBenefitServerDto> = emptyList(),
 ) {
-    val summary: String get() = description
+    val summary: String get() = summaryRaw.ifBlank { description }
 }
 
 @Serializable
@@ -465,11 +675,16 @@ data class PublicPerfectMemberDto(
     val username: String = "",
     @SerialName("user_id") val userId: String? = null,
     @SerialName("numeric_user_id") val numericUserId: Int? = null,
-    @SerialName("joined_at") val since: String? = null,
+    @SerialName("member_no") val memberNo: Int? = null,
+    @SerialName("member_no_label") val memberNoLabel: String? = null,
+    @SerialName("qualification_label") val qualificationLabel: String? = null,
+    @SerialName("since") val sinceRaw: String? = null,
+    @SerialName("joined_at") val joinedAt: String? = null,
 ) {
     val igngId: Int? get() = numericUserId ?: V1Id.parseNumeric(userId)
-    val memberNoLabel: String? get() = null
-    val qualificationLabel: String? get() = null
+    val since: String?
+        get() = sinceRaw?.takeIf { it.isNotBlank() }
+            ?: joinedAt?.takeIf { it.isNotBlank() }?.take(10)
 }
 
 @Serializable
@@ -481,12 +696,14 @@ data class PublicPerfectRosterResponse(
     @SerialName("public_count") val publicCount: Int = 0,
     @SerialName("hidden_count") val hiddenCount: Int = 0,
     val benefits: List<PerfectBenefitDto> = emptyList(),
-    val rules: List<String> = emptyList(),
-    val criteria: List<String> = emptyList(),
+    val rules: List<PerfectRuleDto> = emptyList(),
+    val criteria: List<PerfectCriterionDto> = emptyList(),
     @SerialName("apply_steps") val applySteps: List<String> = emptyList(),
     val principles: List<String> = emptyList(),
     @SerialName("public_members") val members: List<PublicPerfectMemberDto> = emptyList(),
-)
+) {
+    val resolvedTotal: Int get() = maxOf(total, publicCount, members.size)
+}
 
 // ==================== Chat Archive (GET /api/v1/chat/*) ====================
 

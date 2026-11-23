@@ -70,6 +70,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -98,6 +99,7 @@ import net.igng.mcstatus.core.auth.CustomTabsLauncher
 import net.igng.mcstatus.core.data.ChatAttachmentDto
 import net.igng.mcstatus.core.data.ChatForwardChildDto
 import net.igng.mcstatus.core.data.ChatForwardResponse
+import net.igng.mcstatus.core.data.ChatMessageDto
 import net.igng.mcstatus.core.data.ChatRepository
 import net.igng.mcstatus.core.data.ChatStructurePartDto
 import net.igng.mcstatus.core.designsystem.IgngButton
@@ -217,7 +219,7 @@ fun ChatImageGalleryBlock(
             endpoints.resolveApiMediaUrl(att.url ?: att.thumbUrl ?: "/api/v1/chat/media/$messageId/${att.index}")
         }
     }
-    val titles = remember(images) { images.map { it.name ?: "聊天图片" } }
+    val titles = remember(images) { images.map { friendlyMediaDisplayName(it.name, "聊天图片") } }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (images.size == 1 && missingCount == 0) {
@@ -240,9 +242,14 @@ fun ChatImageGalleryBlock(
                             val flatIndex = rowIndex * cols + colIndex
                             val isFace = att.kind.equals("face", ignoreCase = true)
                             val cellSize = if (isFace) 52.dp else if (cols == 2) 104.dp else 72.dp
-                            val thumb = endpoints.resolveApiMediaUrl(
-                                att.thumbUrl ?: att.url ?: "/api/v1/chat/media/$messageId/${att.index}?variant=thumb",
-                            )
+                            val imageCandidates = remember(messageId, att, endpoints) {
+                                buildList {
+                                    endpoints.resolveApiMediaUrl(att.thumbUrl)?.let { add(it) }
+                                    endpoints.resolveApiMediaUrl(att.url)?.let { add(it) }
+                                    endpoints.resolveApiMediaUrl("/api/v1/chat/media/$messageId/${att.index}?variant=thumb")?.let { add(it) }
+                                    endpoints.resolveApiMediaUrl("/api/v1/chat/media/$messageId/${att.index}")?.let { add(it) }
+                                }.distinct()
+                            }
                             Box(
                                 modifier = Modifier
                                     .size(cellSize)
@@ -255,14 +262,12 @@ fun ChatImageGalleryBlock(
                                         }
                                     },
                             ) {
-                                if (thumb != null) {
-                                    AsyncImage(
-                                        model = thumb,
-                                        contentDescription = att.name ?: "聊天图片",
-                                        contentScale = if (isFace) ContentScale.Fit else ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
+                                ResilientChatImage(
+                                    candidates = imageCandidates,
+                                    contentDescription = friendlyMediaDisplayName(att.name, if (isFace) "表情" else "聊天图片"),
+                                    contentScale = if (isFace) ContentScale.Fit else ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                                 if (att.isAnimated) {
                                     AnimatedGifBadge(modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp))
                                 }
@@ -305,6 +310,43 @@ fun ChatImageGalleryBlock(
 }
 
 @Composable
+private fun ResilientChatImage(
+    candidates: List<String>,
+    contentDescription: String,
+    contentScale: ContentScale,
+    modifier: Modifier = Modifier,
+) {
+    val colors = IgngTheme.colors
+    var attemptIndex by remember(candidates) { mutableIntStateOf(0) }
+    val activeUrl = candidates.getOrNull(attemptIndex)
+
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        if (activeUrl != null) {
+            AsyncImage(
+                model = activeUrl,
+                contentDescription = contentDescription,
+                contentScale = contentScale,
+                onError = {
+                    if (attemptIndex < candidates.size) {
+                        attemptIndex += 1
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Rounded.HideImage,
+                contentDescription = "图片加载失败",
+                tint = colors.textMuted,
+                modifier = Modifier
+                    .size(22.dp)
+                    .clickable { attemptIndex = 0 },
+            )
+        }
+    }
+}
+
+@Composable
 private fun SingleChatImage(
     messageId: String,
     att: ChatAttachmentDto,
@@ -313,15 +355,23 @@ private fun SingleChatImage(
 ) {
     val colors = IgngTheme.colors
     val kind = att.kind.lowercase()
-    val isFace = kind == "face"
-    val isMface = kind == "mface"
-    val thumb = endpoints.resolveApiMediaUrl(
-        if (att.isAnimated) {
-            att.url ?: att.thumbUrl ?: "/api/v1/chat/media/$messageId/${att.index}"
-        } else {
-            att.thumbUrl ?: att.url ?: "/api/v1/chat/media/$messageId/${att.index}?variant=thumb"
-        },
-    )
+    val isFace = kind == "face" || kind == "emoji"
+    val isMface = kind == "mface" || kind == "sticker"
+    val imageCandidates = remember(messageId, att, endpoints) {
+        buildList {
+            if (att.isAnimated) {
+                endpoints.resolveApiMediaUrl(att.url)?.let { add(it) }
+                endpoints.resolveApiMediaUrl(att.thumbUrl)?.let { add(it) }
+                endpoints.resolveApiMediaUrl("/api/v1/chat/media/$messageId/${att.index}")?.let { add(it) }
+                endpoints.resolveApiMediaUrl("/api/v1/chat/media/$messageId/${att.index}?variant=thumb")?.let { add(it) }
+            } else {
+                endpoints.resolveApiMediaUrl(att.thumbUrl)?.let { add(it) }
+                endpoints.resolveApiMediaUrl(att.url)?.let { add(it) }
+                endpoints.resolveApiMediaUrl("/api/v1/chat/media/$messageId/${att.index}?variant=thumb")?.let { add(it) }
+                endpoints.resolveApiMediaUrl("/api/v1/chat/media/$messageId/${att.index}")?.let { add(it) }
+            }
+        }.distinct()
+    }
 
     val imgWidth = att.width
     val imgHeight = att.height
@@ -346,14 +396,12 @@ private fun SingleChatImage(
                 .then(if (isFace || isMface) Modifier else Modifier.border(0.5.dp, colors.line, corner))
                 .clickable(onClick = onClick),
         ) {
-            if (thumb != null) {
-                AsyncImage(
-                    model = thumb,
-                    contentDescription = att.name ?: if (isFace) "表情" else "聊天图片",
-                    contentScale = if (isFace || isMface) ContentScale.Fit else ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            ResilientChatImage(
+                candidates = imageCandidates,
+                contentDescription = friendlyMediaDisplayName(att.name, if (isFace) "表情" else "聊天图片"),
+                contentScale = if (isFace || isMface) ContentScale.Fit else ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
             if (att.isAnimated) {
                 AnimatedGifBadge(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp))
             }
@@ -509,7 +557,7 @@ fun ChatVoiceCard(
                         text = if (isActive && audioController.durationMs > 0) {
                             "${(audioController.durationMs / 1000).coerceAtLeast(1)}″"
                         } else {
-                            att.name?.takeIf { it.isNotBlank() } ?: "语音消息"
+                            friendlyMediaDisplayName(att.name, "语音消息")
                         },
                         style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Medium),
                         color = colors.textPrimary,
@@ -566,7 +614,7 @@ fun ChatVideoCard(
     val colors = IgngTheme.colors
     val fullUrl = att.url ?: "/api/v1/chat/media/$messageId/${att.index}"
     val thumbUrl = endpoints.resolveApiMediaUrl(att.thumbUrl)
-    val title = att.name?.takeIf { it.isNotBlank() } ?: "视频消息"
+    val title = friendlyMediaDisplayName(att.name, "视频消息")
 
     Box(
         modifier = modifier
@@ -1267,18 +1315,22 @@ fun ForwardViewerSheet(
                     val tone = semantic.tones[ChatPlatformRules.identityToneIndex(toneKey)]
                     val avatarUrl = child.senderId?.takeIf { ChatPlatformRules.isNumericQqId(it) }
                         ?.let { "https://q1.qlogo.cn/g?b=qq&nk=$it&s=100" }
-                    val nestedCards = child.children.filter { isCardPart(it) && it.cardType != "pat" }
-                    val nestedForwards = child.children.filter(::isForwardPart)
-                    val childImages = child.attachments.filter(::isImageAttachment)
-                    val childFiles = child.attachments.filter(::isFileAttachment).map { att ->
-                        ChatFileEntry(
-                            name = att.name.orEmpty(),
-                            url = att.url,
-                            sizeBytes = att.sizeBytes,
-                            mimeType = att.mimeType,
-                            index = att.index,
+                    val childParsed = remember(child) {
+                        extractMessageDisplay(
+                            ChatMessageDto(
+                                id = messageId,
+                                source = "qq",
+                                platform = "qq",
+                                content = child.content,
+                                attachments = child.attachments,
+                                messageStructure = child.children,
+                            ),
                         )
                     }
+                    val nestedCards = childParsed.cards
+                    val nestedForwards = childParsed.forwards
+                    val childImages = childParsed.images
+                    val childFiles = childParsed.files
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1336,18 +1388,18 @@ fun ForwardViewerSheet(
                                     .padding(horizontal = 11.dp, vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                if (child.content.isNotBlank() && nestedForwards.isEmpty()) {
+                                if (childParsed.text.isNotBlank() && nestedForwards.isEmpty()) {
                                     Text(
-                                        text = child.content,
+                                        text = childParsed.text,
                                         style = IgngTheme.type.body,
                                         color = colors.textPrimary,
                                     )
                                 }
-                                if (childImages.isNotEmpty()) {
+                                if (childImages.isNotEmpty() || childParsed.missingImages > 0) {
                                     ChatImageGalleryBlock(
                                         messageId = messageId,
                                         images = childImages,
-                                        missingCount = 0,
+                                        missingCount = childParsed.missingImages,
                                         endpoints = endpoints,
                                         onPreviewGallery = onPreviewGallery,
                                     )

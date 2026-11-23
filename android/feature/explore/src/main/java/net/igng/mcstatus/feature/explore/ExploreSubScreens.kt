@@ -1,5 +1,6 @@
 package net.igng.mcstatus.feature.explore
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,12 +13,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Person
@@ -32,12 +35,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.igng.mcstatus.core.auth.CustomTabsLauncher
 import net.igng.mcstatus.core.data.ExploreRepository
 import net.igng.mcstatus.core.data.HallFakePlayerDto
 import net.igng.mcstatus.core.data.HallLandDto
@@ -82,6 +87,7 @@ fun ServerFamilyDetailScreen(
     onOpenMap: (familySlug: String, seasonSlug: String) -> Unit,
 ) {
     val colors = IgngTheme.colors
+    val context = LocalContext.current
     val themeKey = ServerThemeKey.resolve(family.themeKey)
     val visual = serverFamilyVisual(themeKey, colors.isDark)
 
@@ -163,6 +169,65 @@ fun ServerFamilyDetailScreen(
                             Text("游玩规则", style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
                             season.rules.forEach { rule ->
                                 Text("· $rule", style = IgngTheme.type.caption, color = colors.textSecondary)
+                            }
+                        }
+                        if (season.plugins.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            Text("特色功能与插件", style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold), color = colors.textPrimary)
+                            Spacer(Modifier.height(6.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                season.plugins.forEach { plugin ->
+                                    val title = plugin.displayTitle.ifBlank { return@forEach }
+                                    val href = plugin.href?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
+                                    val label = if (plugin.value != null && plugin.label.isNotBlank()) {
+                                        "${plugin.label}：${plugin.value}"
+                                    } else {
+                                        title
+                                    }
+                                    if (href != null) {
+                                        Row(
+                                            modifier = Modifier.clickable {
+                                                CustomTabsLauncher.openExternalUrl(context, href, colors.isDark)
+                                            },
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                        ) {
+                                            IgngBadge(text = label, tone = IgngBadgeTone.Accent)
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                                                contentDescription = "打开链接",
+                                                tint = colors.accent,
+                                                modifier = Modifier.size(13.dp),
+                                            )
+                                        }
+                                    } else {
+                                        IgngBadge(text = label)
+                                    }
+                                }
+                            }
+                        }
+                        if (season.worlds.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = season.command?.takeIf { it.isNotBlank() }?.let { "世界列表（游戏内 $it [世界名]）" } ?: "世界列表",
+                                style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold),
+                                color = colors.textPrimary,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            season.worlds.forEach { entry ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("· ${entry.displayLabel}", style = IgngTheme.type.caption, color = colors.textSecondary)
+                                    if (entry.world.isNotBlank() && entry.world != entry.displayLabel) {
+                                        Text(entry.world, style = IgngTheme.type.mono, color = colors.textMuted)
+                                    }
+                                }
                             }
                         }
                         if (season.hasViewableMap) {
@@ -786,7 +851,7 @@ fun PerfectRosterScreen(
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             IgngTopBar(
                 title = "完美之人",
-                subtitle = roster?.let { "共 ${it.total} 位认证成员" },
+                subtitle = roster?.let { "共 ${it.resolvedTotal} 位认证成员" },
                 onBack = onBack,
             )
             when {
@@ -812,6 +877,64 @@ fun PerfectRosterScreen(
                                             if (desc.isNotBlank()) {
                                                 Text(desc, style = IgngTheme.type.caption, color = colors.textSecondary)
                                             }
+                                            if (b.limits.isNotEmpty()) {
+                                                Spacer(Modifier.height(3.dp))
+                                                b.limits.forEach { lim ->
+                                                    Text("· $lim", style = IgngTheme.type.badge, color = colors.textMuted)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (data.criteria.isNotEmpty()) {
+                            item {
+                                IgngTile(modifier = Modifier.fillMaxWidth()) {
+                                    IgngSectionHeader(title = "认证标准")
+                                    Spacer(Modifier.height(8.dp))
+                                    data.criteria.forEach { c ->
+                                        Column(Modifier.padding(vertical = 4.dp)) {
+                                            if (c.title.isNotBlank()) {
+                                                Text(c.title, style = IgngTheme.type.bodyMedium, color = colors.textPrimary)
+                                            }
+                                            if (c.text.isNotBlank()) {
+                                                Text(c.text, style = IgngTheme.type.caption, color = colors.textSecondary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (data.rules.isNotEmpty()) {
+                            item {
+                                IgngTile(modifier = Modifier.fillMaxWidth()) {
+                                    IgngSectionHeader(title = "权益细则")
+                                    Spacer(Modifier.height(8.dp))
+                                    data.rules.forEach { r ->
+                                        if (r.text.isNotBlank()) {
+                                            Text("· ${r.text}", style = IgngTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(vertical = 2.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (data.applySteps.isNotEmpty() || data.principles.isNotEmpty()) {
+                            item {
+                                IgngTile(modifier = Modifier.fillMaxWidth()) {
+                                    if (data.applySteps.isNotEmpty()) {
+                                        IgngSectionHeader(title = "申请流程")
+                                        Spacer(Modifier.height(6.dp))
+                                        data.applySteps.forEachIndexed { i, step ->
+                                            Text("${i + 1}. $step", style = IgngTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(vertical = 2.dp))
+                                        }
+                                    }
+                                    if (data.principles.isNotEmpty()) {
+                                        if (data.applySteps.isNotEmpty()) Spacer(Modifier.height(10.dp))
+                                        IgngSectionHeader(title = "评选原则")
+                                        Spacer(Modifier.height(6.dp))
+                                        data.principles.forEach { p ->
+                                            Text("· $p", style = IgngTheme.type.caption, color = colors.textSecondary, modifier = Modifier.padding(vertical = 2.dp))
                                         }
                                     }
                                 }

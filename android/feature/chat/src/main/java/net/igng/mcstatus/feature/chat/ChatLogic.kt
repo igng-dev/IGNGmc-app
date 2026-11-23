@@ -296,16 +296,19 @@ fun buildUnifiedSessions(sources: ChatSourcesResponse): List<ChatSessionItem> {
             else -> ChatSessionKind.QQ_GROUP
         }
         val lastAt = group.lastMessage?.createdAt ?: group.lastMessageAt
-        val preview = group.lastMessage?.content?.takeIf { it.isNotBlank() } ?: group.lastPreview
-        val qqPrivateAvatar = if (
-            kind == ChatSessionKind.QQ_PRIVATE &&
-            sources.authenticated &&
-            group.avatarUrl.isNullOrBlank()
-        ) {
-            val rawQq = group.id.removePrefix("-")
-            if (ChatPlatformRules.isNumericQqId(rawQq)) "https://q1.qlogo.cn/g?b=qq&nk=$rawQq&s=100" else null
-        } else {
-            null
+        val rawPreview = group.lastMessage?.content?.takeIf { it.isNotBlank() } ?: group.lastPreview
+        val preview = rawPreview?.let(::humanizeMediaPlaceholders)
+        val normalizedGroupAvatar = normalizeChatAvatarUrl(group.avatarUrl)
+        val defaultQqAvatar = when {
+            normalizedGroupAvatar != null -> null
+            kind == ChatSessionKind.QQ_PRIVATE && sources.authenticated -> {
+                val rawQq = group.id.removePrefix("-")
+                if (ChatPlatformRules.isNumericQqId(rawQq)) "https://q1.qlogo.cn/g?b=qq&nk=$rawQq&s=100" else null
+            }
+            kind == ChatSessionKind.QQ_GROUP && ChatPlatformRules.isNumericQqId(group.id) -> {
+                "https://p.qlogo.cn/gh/${group.id}/${group.id}/100"
+            }
+            else -> null
         }
         result += ChatSessionItem(
             key = "qq:${group.id}",
@@ -316,7 +319,7 @@ fun buildUnifiedSessions(sources: ChatSourcesResponse): List<ChatSessionItem> {
             kind = kind,
             isPrivate = isPriv,
             name = group.name.ifBlank { "${kind.compactLabel} ${group.id.takeLast(4)}" },
-            avatarUrl = group.avatarUrl?.takeIf { it.isNotBlank() } ?: qqPrivateAvatar,
+            avatarUrl = normalizedGroupAvatar ?: defaultQqAvatar,
             isAdminGroup = group.isAdminGroup,
             isTechGroup = group.isTechGroup,
             messageCount = group.messageCount,
@@ -391,12 +394,30 @@ fun filterSessions(
 
 // ==================== Sender Resolution & Privacy-Safe Avatars ====================
 
+private val HTTP_QLOGO_REGEX = Regex("^http://([a-z0-9-]+\\.qlogo\\.cn/)", RegexOption.IGNORE_CASE)
+private val MC_HEADS_REGEX = Regex("^https?://mc-heads\\.net/avatar/([^/?#]+)(?:/(\\d+))?$", RegexOption.IGNORE_CASE)
+
+fun normalizeChatAvatarUrl(raw: String?): String? {
+    val trimmed = raw?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    HTTP_QLOGO_REGEX.find(trimmed)?.let {
+        return "https://" + trimmed.substring(7)
+    }
+    MC_HEADS_REGEX.matchEntire(trimmed)?.let { match ->
+        val name = match.groupValues[1]
+        val size = match.groupValues[2].ifBlank { "64" }
+        return "/api/v1/mc/avatars/$name?size=$size"
+    }
+    return trimmed
+}
+
 data class ResolvedChatSender(
     val groupKey: String,
     val displayName: String,
     val secondaryName: String?,
     val igngUsername: String?,
     val avatarUrl: String?,
+    val fallbackAvatarUrls: List<String> = emptyList(),
     val initials: String,
     val toneIndex: Int,
     val isBot: Boolean,
@@ -463,20 +484,34 @@ fun resolveChatSender(
         else -> displayName = if (rawId.isNotBlank()) "QQ $rawId" else "QQ 用户"
     }
 
-    // Audit C-7: never query qlogo with masked QQ IDs (containing '*'), and MC always uses skin heads.
-    val profileAvatar = profile?.avatarUrl
-    val msgAvatar = message.senderAvatar
-    val avatarUrl: String? = when {
-        isAccountSelf -> null
-        !isIm -> rawId.takeIf { it.isNotBlank() }?.let {
-            val encoded = java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20")
-            "https://mc-heads.net/avatar/$encoded/64"
-        }
-        !profileAvatar.isNullOrBlank() -> profileAvatar
-        !msgAvatar.isNullOrBlank() && !msgAvatar.contains('*') -> msgAvatar
-        isQq && ChatPlatformRules.isNumericQqId(rawId) -> "https://q1.qlogo.cn/g?b=qq&nk=$rawId&s=100"
-        else -> null
+    // Audit C-7: never query qlogo with masked QQ IDs (containing '*'), and MC always uses skin heads
+    // routed through the unified v1 gateway proxy first with multi-mirror fallback.
+    val profileAvatar = normalizeChatAvatarUrl(profile?.avatarUrl)
+    val msgAvatar = normalizeChatAvatarUrl(message.senderAvatar)?.takeUnless { it.contains('*') }
+    val avatarCandidates: List<String> = when {
+        isAccountSelf -> emptyList()
+        !isIm -> rawId.takeIf { it.isNotBlank() }?.let { name ->
+            val encoded = java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+            buildList {
+                if (profileAvatar != null && profileAvatar.startsWith("/api/v1/mc/avatars/")) {
+                    add(profileAvatar)
+                }
+                add("/api/v1/mc/avatars/$encoded?size=64")
+                add("https://minotar.net/helm/$encoded/64.png")
+                add("https://mc-heads.net/avatar/$encoded/64")
+                add("https://vzge.me/face/64/$encoded")
+            }.distinct()
+        }.orEmpty()
+        else -> buildList {
+            profileAvatar?.let { add(it) }
+            msgAvatar?.let { add(it) }
+            if (isQq && ChatPlatformRules.isNumericQqId(rawId)) {
+                add("https://q1.qlogo.cn/g?b=qq&nk=$rawId&s=100")
+            }
+        }.distinct()
     }
+    val avatarUrl: String? = avatarCandidates.firstOrNull()
+    val fallbackAvatarUrls: List<String> = avatarCandidates.drop(1)
 
     val isMine = when {
         isAccountSelf -> false
@@ -518,6 +553,7 @@ fun resolveChatSender(
         secondaryName = secondaryName,
         igngUsername = if (boundIgngId != null) profile?.igngUsername?.takeIf { it.isNotBlank() && it != displayName } else null,
         avatarUrl = avatarUrl,
+        fallbackAvatarUrls = fallbackAvatarUrls,
         initials = initials,
         toneIndex = ChatPlatformRules.identityToneIndex(profileKey),
         isBot = isBot,
@@ -550,20 +586,79 @@ fun prioritizedInlineBadges(badges: List<ChatSenderBadgeDto>, limit: Int = 2): L
 
 // ==================== Content, Attachment & Placeholder Extraction ====================
 
-private val IMAGE_ATTACHMENT_KINDS = setOf("image", "mface", "face")
-private val PLAYABLE_AUDIO_KINDS = setOf("audio", "record")
-private val PLAYABLE_VIDEO_KINDS = setOf("video")
-private val IMAGE_PLACEHOLDER_REGEX = Regex("[\\[【](?:图片|动画表情|动图|表情)(?:[:：][^\\]】\\n]*)?[\\]】]")
-private val FILE_PLACEHOLDER_REGEX = Regex("\\[文件(?:[:：]\\s*([^\\]\\n]*))?\\]")
+private val IMAGE_ATTACHMENT_KINDS = setOf("image", "mface", "face", "sticker", "emoji", "photo", "gif", "webp")
+private val PLAYABLE_AUDIO_KINDS = setOf("audio", "record", "voice")
+private val PLAYABLE_VIDEO_KINDS = setOf("video", "shortvideo")
+private val IMAGE_PLACEHOLDER_REGEX = Regex(
+    "[\\[【](?:(?:图片|动画表情|动图|表情|贴纸)(?:(?:\\s*[:：]|\\s+md5\\s*=)[^\\]】\\n]*)?|(?:image|img|mface|face|sticker|emoji|photo)(?:\\s*[:：=][^\\]】\\n]*)?)[\\]】]",
+    RegexOption.IGNORE_CASE,
+)
+private val VIDEO_PLACEHOLDER_REGEX = Regex(
+    "[\\[【](?:视频|小视频|video|shortvideo)(?:\\s*[:：=][^\\]】\\n]*)?[\\]】]",
+    RegexOption.IGNORE_CASE,
+)
+private val AUDIO_PLACEHOLDER_REGEX = Regex(
+    "[\\[【](?:语音|音频|audio|record|voice)(?:\\s*[:：=][^\\]】\\n]*)?[\\]】]",
+    RegexOption.IGNORE_CASE,
+)
+private val FILE_PLACEHOLDER_REGEX = Regex("\\[(?:文件|file)(?:[:：]\\s*([^\\]\\n]*))?\\]", RegexOption.IGNORE_CASE)
 private val STRUCTURE_PREFIX_CHATLOG = Regex("^\\[聊天记录\\]\\s*")
 private val STRUCTURE_PREFIX_FORWARD = Regex("^\\[转发消息\\]\\s*")
 private val STRUCTURE_PREFIX_CARD = Regex("^\\[(?:卡片|小程序)(?::[^\\n]*)?\\][^\\n]*")
 private val STRUCTURE_PREFIX_LINK = Regex("^\\[链接\\]\\s*")
+private val HASH_FILENAME_REGEX = Regex(
+    "^(?:-?\\d+_[0-9a-fA-F]{16,}(?:_[0-9a-fA-F]{8,})?|[0-9a-fA-F]{24,}|[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|(?:face|mface|img|image|pic|photo|video|audio|voice|record)_[-0-9a-fA-F]+)(?:\\.[A-Za-z0-9]{1,6})?$",
+    RegexOption.IGNORE_CASE,
+)
 
-fun isImageAttachment(att: ChatAttachmentDto): Boolean = att.kind.lowercase() in IMAGE_ATTACHMENT_KINDS
-fun isAudioAttachment(att: ChatAttachmentDto): Boolean = att.kind.lowercase() in PLAYABLE_AUDIO_KINDS
-fun isVideoAttachment(att: ChatAttachmentDto): Boolean = att.kind.lowercase() in PLAYABLE_VIDEO_KINDS
-fun isFileAttachment(att: ChatAttachmentDto): Boolean = att.kind.lowercase() == "file"
+fun isImageAttachment(att: ChatAttachmentDto): Boolean =
+    att.kind.lowercase() in IMAGE_ATTACHMENT_KINDS ||
+        att.mimeType?.startsWith("image/", ignoreCase = true) == true
+
+fun isAudioAttachment(att: ChatAttachmentDto): Boolean =
+    att.kind.lowercase() in PLAYABLE_AUDIO_KINDS ||
+        att.mimeType?.startsWith("audio/", ignoreCase = true) == true
+
+fun isVideoAttachment(att: ChatAttachmentDto): Boolean =
+    att.kind.lowercase() in PLAYABLE_VIDEO_KINDS ||
+        att.mimeType?.startsWith("video/", ignoreCase = true) == true
+
+fun isFileAttachment(att: ChatAttachmentDto): Boolean =
+    att.kind.lowercase() == "file" &&
+        !isImageAttachment(att) &&
+        !isAudioAttachment(att) &&
+        !isVideoAttachment(att)
+
+/**
+ * Replaces raw bot/protocol English resource tags (e.g. `[图片 md5=...]`, `[image]`, `[mface]`,
+ * `[video]`, `[record]`) with clean Chinese labels when media attachments are absent.
+ */
+fun humanizeMediaPlaceholders(text: String): String {
+    if (text.isBlank()) return text
+    var result = IMAGE_PLACEHOLDER_REGEX.replace(text) { m ->
+        val raw = m.value.lowercase()
+        when {
+            raw.contains("mface") || raw.contains("sticker") || raw.contains("贴纸") -> "[贴纸]"
+            raw.contains("face") || raw.contains("emoji") || raw.contains("表情") -> "[表情]"
+            raw.contains("动图") -> "[动图]"
+            else -> "[图片]"
+        }
+    }
+    result = VIDEO_PLACEHOLDER_REGEX.replace(result, "[视频]")
+    result = AUDIO_PLACEHOLDER_REGEX.replace(result, "[语音]")
+    return result
+}
+
+/**
+ * Filters machine-generated hash filenames (e.g. `-2105710147_C56BF959...webp`, `face_277.webp`)
+ * into friendly Chinese media titles while preserving meaningful human filenames.
+ */
+fun friendlyMediaDisplayName(rawName: String?, fallback: String): String {
+    val clean = rawName?.trim().orEmpty()
+    if (clean.isEmpty()) return fallback
+    if (HASH_FILENAME_REGEX.matches(clean)) return fallback
+    return clean
+}
 
 fun isForwardPart(part: ChatStructurePartDto): Boolean = part.type == "forward" || part.type == "node"
 fun isCardPart(part: ChatStructurePartDto): Boolean = part.type == "card"
@@ -665,8 +760,21 @@ fun extractMessageDisplay(message: ChatMessageDto): ParsedMessageDisplay {
     val audios = message.attachments.filter(::isAudioAttachment)
     val videos = message.attachments.filter(::isVideoAttachment)
 
+    var cleanedMediaText = textWithoutFiles
+    if (videos.isNotEmpty()) {
+        cleanedMediaText = VIDEO_PLACEHOLDER_REGEX.replace(cleanedMediaText, "")
+    }
+    if (audios.isNotEmpty()) {
+        cleanedMediaText = AUDIO_PLACEHOLDER_REGEX.replace(cleanedMediaText, "")
+    }
+    cleanedMediaText = cleanedMediaText
+        .replace(Regex("[ \\t]{2,}"), " ")
+        .replace(Regex("[ \\t]+\\n"), "\n")
+        .replace(Regex("\\n{3,}"), "\n\n")
+        .trim()
+
     var imagePlaceholderCount = 0
-    val strippedImagesText = IMAGE_PLACEHOLDER_REGEX.replace(textWithoutFiles) {
+    val strippedImagesText = IMAGE_PLACEHOLDER_REGEX.replace(cleanedMediaText) {
         imagePlaceholderCount += 1
         ""
     }.replace(Regex("[ \\t]{2,}"), " ")
@@ -676,17 +784,20 @@ fun extractMessageDisplay(message: ChatMessageDto): ParsedMessageDisplay {
 
     val isWechat = ChatPlatformRules.resolvePlatform(message.platform, message.groupId, message.source) == "wechat"
     val rawMissing = (imagePlaceholderCount - images.size).coerceAtLeast(0)
-    // Match chat.igng.net: keep readable `[图片]` placeholder text for WeChat when media isn't extracted yet.
+    // Match chat.igng.net: keep readable `[图片]` placeholder text for WeChat when media isn't extracted yet,
+    // while normalizing raw English/MD5 tokens so internal syntax never leaks into bubbles.
     val finalText: String
     val missingImages: Int
     if (forwards.isNotEmpty()) {
         finalText = ""
         missingImages = 0
     } else if (isWechat && rawMissing > 0 && images.isEmpty()) {
-        finalText = textWithoutFiles.trim()
+        finalText = humanizeMediaPlaceholders(cleanedMediaText)
         missingImages = 0
     } else {
-        finalText = if (imagePlaceholderCount > 0) strippedImagesText else textWithoutFiles.trim()
+        finalText = humanizeMediaPlaceholders(
+            if (imagePlaceholderCount > 0) strippedImagesText else cleanedMediaText,
+        )
         missingImages = rawMissing
     }
 

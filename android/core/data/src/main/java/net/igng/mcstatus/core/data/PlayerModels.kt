@@ -467,6 +467,9 @@ data class PersonalPerfectHolderDto(
     val username: String = "",
     val uuid: String? = null,
     @SerialName("is_holder") val isHolder: Boolean = false,
+    @SerialName("in_luckperms") val inLuckPerms: Boolean = false,
+    @SerialName("member_no_label") val memberNoLabel: String? = null,
+    @SerialName("qualification_label") val qualificationLabel: String? = null,
     @SerialName("first_added_at") val firstAddedAt: String? = null,
     val contexts: List<String> = emptyList(),
 )
@@ -479,9 +482,10 @@ data class PersonalPerfectResponse(
     @SerialName("wiki_url") val wikiUrl: String? = null,
     val holders: List<PersonalPerfectHolderDto> = emptyList(),
     val benefits: List<PerfectBenefitDto> = emptyList(),
-    val rules: List<String> = emptyList(),
-    val criteria: List<String> = emptyList(),
+    val rules: List<PerfectRuleDto> = emptyList(),
+    val criteria: List<PerfectCriterionDto> = emptyList(),
     @SerialName("apply_steps") val applySteps: List<String> = emptyList(),
+    val principles: List<String> = emptyList(),
 )
 
 @Serializable
