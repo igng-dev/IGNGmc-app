@@ -91,6 +91,7 @@ import net.igng.mcstatus.core.model.IgngFormatters
 import net.igng.mcstatus.core.model.IgngSocialChannels
 import net.igng.mcstatus.core.model.SavedAccount
 import net.igng.mcstatus.core.model.ServerThemeKey
+import net.igng.mcstatus.core.model.SessionAuthStatus
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -98,6 +99,7 @@ fun ExploreScreen(
     exploreRepository: ExploreRepository,
     statusRepository: StatusRepository,
     activeAccount: SavedAccount?,
+    sessionAuthStatus: SessionAuthStatus = if (activeAccount != null) SessionAuthStatus.ACTIVE else SessionAuthStatus.SIGNED_OUT,
     bottomPadding: PaddingValues,
     onOpenSearch: () -> Unit,
     onOpenStatusWall: () -> Unit,
@@ -209,11 +211,12 @@ fun ExploreScreen(
                                 color = colors.textSecondary,
                             )
                         }
+                        val needsReauth = activeAccount != null && sessionAuthStatus.requiresReauth
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .background(colors.tile)
-                                .border(1.dp, colors.lineStrong, CircleShape)
+                                .background(if (needsReauth) colors.warningBg else colors.tile)
+                                .border(1.dp, if (needsReauth) colors.warning else colors.lineStrong, CircleShape)
                                 .clickable {
                                     haptic(IgngHapticKind.Tap)
                                     onOpenMyProfile()
@@ -221,9 +224,17 @@ fun ExploreScreen(
                                 .padding(horizontal = 12.dp, vertical = 7.dp),
                         ) {
                             Text(
-                                text = activeAccount?.displayName ?: "登录",
+                                text = when {
+                                    needsReauth -> "需重新授权"
+                                    activeAccount != null -> activeAccount.displayName
+                                    else -> "登录"
+                                },
                                 style = IgngTheme.type.caption.copy(fontWeight = FontWeight.Bold),
-                                color = if (activeAccount != null) colors.textPrimary else colors.accent,
+                                color = when {
+                                    needsReauth -> colors.warning
+                                    activeAccount != null -> colors.textPrimary
+                                    else -> colors.accent
+                                },
                                 maxLines = 1,
                             )
                         }

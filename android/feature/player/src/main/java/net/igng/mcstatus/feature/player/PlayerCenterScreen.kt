@@ -66,6 +66,7 @@ import net.igng.mcstatus.core.designsystem.IgngTopBar
 import net.igng.mcstatus.core.designsystem.igngStaggeredReveal
 import net.igng.mcstatus.core.model.DailyExpStatus
 import net.igng.mcstatus.core.model.SavedAccount
+import net.igng.mcstatus.core.model.SessionAuthStatus
 
 enum class PlayerDestination {
     CHARACTERS,
@@ -87,6 +88,8 @@ enum class PlayerDestination {
 @Composable
 fun PlayerCenterScreen(
     activeAccount: SavedAccount?,
+    sessionAuthStatus: SessionAuthStatus = if (activeAccount != null) SessionAuthStatus.ACTIVE else SessionAuthStatus.SIGNED_OUT,
+    sessionEpoch: Int = 0,
     dailyExp: DailyExpStatus?,
     playerRepository: PlayerRepository,
     ticketRepository: TicketRepository,
@@ -98,9 +101,10 @@ fun PlayerCenterScreen(
     val colors = IgngTheme.colors
     var openTicketCount by remember(activeAccount?.userId) { mutableIntStateOf(0) }
     var boundCount by remember(activeAccount?.userId) { mutableStateOf<Int?>(null) }
+    val sessionExpired = activeAccount != null && sessionAuthStatus.requiresReauth
 
-    LaunchedEffect(activeAccount?.userId) {
-        if (activeAccount == null) {
+    LaunchedEffect(activeAccount?.userId, sessionEpoch, sessionAuthStatus) {
+        if (activeAccount == null || sessionAuthStatus != SessionAuthStatus.ACTIVE) {
             openTicketCount = 0
             boundCount = null
             return@LaunchedEffect
@@ -115,7 +119,11 @@ fun PlayerCenterScreen(
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             IgngTopBar(
                 title = "我的中心",
-                subtitle = if (activeAccount != null) "IGNG 玩家控制中心" else "登录以管理角色、工单与游戏资产",
+                subtitle = when {
+                    sessionExpired -> "登录会话已失效 · 仅展示本地缓存与公开入口"
+                    activeAccount != null -> "IGNG 玩家控制中心"
+                    else -> "登录以管理角色、工单与游戏资产"
+                },
                 actions = {
                     IgngButton(
                         text = "设置",
@@ -162,6 +170,40 @@ fun PlayerCenterScreen(
                     return@LazyColumn
                 }
 
+                if (sessionExpired) {
+                    item(key = "sessionExpiredBanner") {
+                        val isLegacy = sessionAuthStatus == SessionAuthStatus.LEGACY_UPGRADE_REQUIRED
+                        IgngTile(
+                            borderColor = colors.warning.copy(alpha = 0.55f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            IgngBadge(
+                                text = if (isLegacy) "需升级 OAuth 2.1 授权" else "登录会话已失效",
+                                tone = IgngBadgeTone.Warning,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = if (isLegacy) {
+                                    "当前账户仍保留旧版登录凭证，新版本需通过 IGNG SSO 重新授权以恢复角色管理、工单与跨服仓库等个人数据。"
+                                } else {
+                                    "当前仅展示本地缓存的账户标识与公开主页入口；角色管理、工单、仓库等个人数据需重新授权后同步。"
+                                },
+                                style = IgngTheme.type.caption,
+                                color = colors.textSecondary,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            IgngButton(
+                                text = "立即重新授权",
+                                onClick = onSignIn,
+                                style = IgngButtonStyle.Primary,
+                                icon = Icons.AutoMirrored.Rounded.Login,
+                                compact = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+
                 // 1. Player Passport Header Card
                 item(key = "passport") {
                     IgngTile(modifier = Modifier.fillMaxWidth().igngStaggeredReveal(0)) {
@@ -178,8 +220,12 @@ fun PlayerCenterScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(activeAccount.displayName, style = IgngTheme.type.pageTitle, color = colors.textPrimary)
-                                    activeAccount.adminRole?.let { role ->
-                                        IgngBadge(role.label, tone = IgngBadgeTone.Accent)
+                                    if (sessionExpired) {
+                                        IgngBadge("已失效", tone = IgngBadgeTone.Warning)
+                                    } else {
+                                        activeAccount.adminRole?.let { role ->
+                                            IgngBadge(role.label, tone = IgngBadgeTone.Accent)
+                                        }
                                     }
                                 }
                                 Text(
@@ -187,7 +233,7 @@ fun PlayerCenterScreen(
                                     style = IgngTheme.type.caption,
                                     color = colors.textSecondary,
                                 )
-                                if (dailyExp != null && dailyExp.loggedIn) {
+                                if (!sessionExpired && dailyExp != null && dailyExp.loggedIn) {
                                     Spacer(Modifier.height(6.dp))
                                     val expText = buildString {
                                         if (dailyExp.awarded) append("今日登录经验已入账 · ")
@@ -235,10 +281,10 @@ fun PlayerCenterScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("我的工单", style = IgngTheme.type.cardTitle, color = colors.textPrimary)
                                 Text(
-                                    text = if (openTicketCount > 0) {
-                                        "你有 $openTicketCount 张进行中的工单等待跟进"
-                                    } else {
-                                        "当前没有进行中的工单，点击查看历史记录"
+                                    text = when {
+                                        sessionExpired -> "重新授权后查看你的进行中工单与进度"
+                                        openTicketCount > 0 -> "你有 $openTicketCount 张进行中的工单等待跟进"
+                                        else -> "当前没有进行中的工单，点击查看历史记录"
                                     },
                                     style = IgngTheme.type.caption,
                                     color = colors.textSecondary,
@@ -261,7 +307,11 @@ fun PlayerCenterScreen(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             CenterGridTile(
                                 title = "我的角色",
-                                subtitle = boundCount?.let { "已绑定 $it 个角色" } ?: "改密、隐私与处罚",
+                                subtitle = when {
+                                    sessionExpired -> "重新授权后查看已绑定角色"
+                                    boundCount != null -> "已绑定 $boundCount 个角色"
+                                    else -> "改密、隐私与处罚"
+                                },
                                 icon = Icons.Rounded.Person,
                                 tint = colors.accent,
                                 onClick = { onNavigate(PlayerDestination.CHARACTERS) },
@@ -372,8 +422,8 @@ fun PlayerCenterScreen(
                     }
                 }
 
-                // 6. Role-Gated Admin Pocket Console (Invisible to regular players)
-                if (activeAccount.adminRole != null) {
+                // 6. Role-Gated Admin Pocket Console (Invisible to regular players or expired sessions)
+                if (!sessionExpired && activeAccount.adminRole != null) {
                     item(key = "adminEntry") {
                         IgngInteractiveTile(
                             onClick = { onNavigate(PlayerDestination.ADMIN_CONSOLE) },

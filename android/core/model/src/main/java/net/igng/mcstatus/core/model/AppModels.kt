@@ -84,6 +84,21 @@ data class SavedAccount(
         get() = McAdminRole.fromWire(adminRoleWire)
 }
 
+enum class SessionAuthStatus {
+    /** No local account saved. */
+    SIGNED_OUT,
+    /** Active OAuth 2.1 session with a usable access token and rotating refresh token. */
+    ACTIVE,
+    /** Saved OAuth 2.1 session was rejected/revoked by the server and requires re-authorization. */
+    EXPIRED,
+    /** Pre-v2.1.0 legacy session token without an OAuth 2.1 refresh token; must re-authorize once. */
+    LEGACY_UPGRADE_REQUIRED,
+    ;
+
+    val requiresReauth: Boolean
+        get() = this == EXPIRED || this == LEGACY_UPGRADE_REQUIRED
+}
+
 @Serializable
 data class DailyExpStatus(
     val loggedIn: Boolean = false,

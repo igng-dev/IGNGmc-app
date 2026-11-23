@@ -49,6 +49,7 @@ import net.igng.mcstatus.core.model.AppPreferences
 import net.igng.mcstatus.core.model.IgngFormatters
 import net.igng.mcstatus.core.model.MotionIntensity
 import net.igng.mcstatus.core.model.SavedAccount
+import net.igng.mcstatus.core.model.SessionAuthStatus
 import net.igng.mcstatus.core.model.ThemeMode
 
 @Composable
@@ -56,6 +57,7 @@ fun SettingsScreen(
     container: IgngAppContainer,
     preferences: AppPreferences,
     activeAccount: SavedAccount?,
+    sessionAuthStatus: SessionAuthStatus = if (activeAccount != null) SessionAuthStatus.ACTIVE else SessionAuthStatus.SIGNED_OUT,
     accounts: List<SavedAccount>,
     onBack: () -> Unit,
     onStartOAuthLogin: (forceLogin: Boolean) -> Unit,
@@ -95,25 +97,53 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         } else {
+                            val sessionExpired = sessionAuthStatus.requiresReauth
+                            val isLegacyUpgrade = sessionAuthStatus == SessionAuthStatus.LEGACY_UPGRADE_REQUIRED
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 IgngAvatar(activeAccount.displayName, activeAccount.avatarUrl, size = 46.dp)
                                 Column(Modifier.weight(1f)) {
-                                    Text(activeAccount.displayName, style = IgngTheme.type.cardTitle, color = colors.textPrimary)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Text(activeAccount.displayName, style = IgngTheme.type.cardTitle, color = colors.textPrimary)
+                                        if (sessionExpired) {
+                                            IgngBadge(
+                                                text = if (isLegacyUpgrade) "需升级授权" else "会话已失效",
+                                                tone = IgngBadgeTone.Warning,
+                                            )
+                                        }
+                                    }
                                     Text(
-                                        text = buildString {
-                                            append("@${activeAccount.username}")
-                                            (activeAccount.refreshExpiresAt ?: activeAccount.expiresAt)?.let {
-                                                append(" · 会话有效期至 ")
-                                                append(IgngFormatters.formatIsoDateTime(it, short = true))
+                                        text = if (sessionExpired) {
+                                            "@${activeAccount.username} · 会话已失效，仅保留本地记录"
+                                        } else {
+                                            buildString {
+                                                append("@${activeAccount.username}")
+                                                (activeAccount.refreshExpiresAt ?: activeAccount.expiresAt)?.let {
+                                                    append(" · 会话有效期至 ")
+                                                    append(IgngFormatters.formatIsoDateTime(it, short = true))
+                                                }
                                             }
                                         },
                                         style = IgngTheme.type.caption,
-                                        color = colors.textSecondary,
+                                        color = if (sessionExpired) colors.warning else colors.textSecondary,
                                     )
                                 }
+                            }
+                            if (sessionExpired) {
+                                Spacer(Modifier.height(12.dp))
+                                IgngButton(
+                                    text = "重新授权当前账户",
+                                    onClick = { onStartOAuthLogin(false) },
+                                    style = IgngButtonStyle.Primary,
+                                    icon = Icons.AutoMirrored.Rounded.Login,
+                                    compact = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                             Spacer(Modifier.height(12.dp))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
